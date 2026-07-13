@@ -1,0 +1,117 @@
+{
+  "dataset": "AgriSense AI hybrid sequential dataset",
+  "schema_version": "1.0",
+  "row_granularity": "one simulated plant-day observation",
+  "columns": {
+    "Plant_ID": {
+      "type": "string",
+      "description": "Simulated virtual plant identifier"
+    },
+    "Image_Path": {
+      "type": "string",
+      "description": "Project-relative path to a real PlantVillage image"
+    },
+    "Timestamp": {
+      "type": "date",
+      "format": "YYYY-MM-DD",
+      "description": "Simulated daily observation date"
+    },
+    "Plant_Type": {
+      "type": "string",
+      "description": "Crop name parsed from the source class"
+    },
+    "Soil_Moisture": {
+      "type": "number",
+      "unit": "percent",
+      "range": [
+        5,
+        100
+      ]
+    },
+    "Temperature": {
+      "type": "number",
+      "unit": "celsius",
+      "range": [
+        8,
+        45
+      ]
+    },
+    "Humidity": {
+      "type": "number",
+      "unit": "percent",
+      "range": [
+        10,
+        100
+      ]
+    },
+    "Light_Intensity": {
+      "type": "number",
+      "unit": "lux",
+      "range": [
+        1000,
+        30000
+      ]
+    },
+    "Health_Status": {
+      "type": "category",
+      "allowed_values": [
+        "Healthy",
+        "Watch",
+        "Stressed",
+        "Critical"
+      ]
+    },
+    "Stress_Level": {
+      "type": "category",
+      "allowed_values": [
+        "Healthy",
+        "Low",
+        "Medium",
+        "High"
+      ]
+    },
+    "Disease_Class": {
+      "type": "category",
+      "allowed_values": [
+        "Apple___Apple_scab",
+        "Apple___Black_rot",
+        "Apple___Cedar_apple_rust",
+        "Apple___healthy",
+        "Blueberry___healthy",
+        "Cherry_(including_sour)___Powdery_mildew",
+        "Cherry_(including_sour)___healthy",
+        "Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot",
+        "Corn_(maize)___Common_rust_",
+        "Corn_(maize)___Northern_Leaf_Blight",
+        "Corn_(maize)___healthy",
+        "Grape___Black_rot",
+        "Grape___Esca_(Black_Measles)",
+        "Grape___Leaf_blight_(Isariopsis_Leaf_Spot)",
+        "Grape___healthy",
+        "Orange___Haunglongbing_(Citrus_greening)",
+        "Peach___Bacterial_spot",
+        "Peach___healthy",
+        "Pepper,_bell___Bacterial_spot",
+        "Pepper,_bell___healthy",
+        "Potato___Early_blight",
+        "Potato___Late_blight",
+        "Potato___healthy",
+        "Raspberry___healthy",
+        "Soybean___healthy",
+        "Squash___Powdery_mildew",
+        "Strawberry___Leaf_scorch",
+        "Strawberry___healthy",
+        "Tomato___Bacterial_spot",
+        "Tomato___Early_blight",
+        "Tomato___Late_blight",
+        "Tomato___Leaf_Mold",
+        "Tomato___Septoria_leaf_spot",
+        "Tomato___Spider_mites Two-spotted_spider_mite",
+        "Tomato___Target_Spot",
+        "Tomato___Tomato_Yellow_Leaf_Curl_Virus",
+        "Tomato___Tomato_mosaic_virus",
+        "Tomato___healthy"
+      ]
+    }
+  }
+}

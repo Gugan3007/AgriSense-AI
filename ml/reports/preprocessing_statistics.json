@@ -1,0 +1,155 @@
+{
+  "csv_path": "/Users/gugansaravanan/Desktop/agrisense-ai/dataset/sequential_data.csv",
+  "valid_rows": 1583,
+  "missing_rows_skipped": 0,
+  "image_size": [
+    128,
+    128,
+    3
+  ],
+  "sequence_length": 7,
+  "sensor_columns": [
+    "Soil_Moisture",
+    "Temperature",
+    "Humidity",
+    "Light_Intensity"
+  ],
+  "class_labels": [
+    "Healthy",
+    "Low",
+    "Medium",
+    "High"
+  ],
+  "split_by": "Plant_ID",
+  "plant_counts": {
+    "train": 44,
+    "validation": 10,
+    "test": 10
+  },
+  "window_counts": {
+    "train": 822,
+    "validation": 187,
+    "test": 190
+  },
+  "label_distribution": {
+    "train": {
+      "Healthy": 151,
+      "Low": 174,
+      "Medium": 325,
+      "High": 172
+    },
+    "validation": {
+      "Healthy": 42,
+      "Low": 23,
+      "Medium": 92,
+      "High": 30
+    },
+    "test": {
+      "Healthy": 43,
+      "Low": 22,
+      "Medium": 93,
+      "High": 32
+    }
+  },
+  "augmentation": {
+    "training_only": true,
+    "operations": [
+      "RandomRotation",
+      "RandomFlip",
+      "RandomBrightness",
+      "RandomContrast"
+    ]
+  },
+  "plant_ids": {
+    "train": [
+      "PLANT_002",
+      "PLANT_003",
+      "PLANT_005",
+      "PLANT_007",
+      "PLANT_008",
+      "PLANT_011",
+      "PLANT_012",
+      "PLANT_015",
+      "PLANT_016",
+      "PLANT_019",
+      "PLANT_020",
+      "PLANT_021",
+      "PLANT_022",
+      "PLANT_023",
+      "PLANT_024",
+      "PLANT_025",
+      "PLANT_027",
+      "PLANT_028",
+      "PLANT_029",
+      "PLANT_030",
+      "PLANT_031",
+      "PLANT_032",
+      "PLANT_033",
+      "PLANT_034",
+      "PLANT_036",
+      "PLANT_038",
+      "PLANT_039",
+      "PLANT_040",
+      "PLANT_042",
+      "PLANT_043",
+      "PLANT_044",
+      "PLANT_046",
+      "PLANT_047",
+      "PLANT_048",
+      "PLANT_049",
+      "PLANT_052",
+      "PLANT_054",
+      "PLANT_055",
+      "PLANT_056",
+      "PLANT_058",
+      "PLANT_060",
+      "PLANT_061",
+      "PLANT_063",
+      "PLANT_064"
+    ],
+    "validation": [
+      "PLANT_001",
+      "PLANT_006",
+      "PLANT_009",
+      "PLANT_013",
+      "PLANT_014",
+      "PLANT_017",
+      "PLANT_035",
+      "PLANT_041",
+      "PLANT_057",
+      "PLANT_062"
+    ],
+    "test": [
+      "PLANT_004",
+      "PLANT_010",
+      "PLANT_018",
+      "PLANT_026",
+      "PLANT_037",
+      "PLANT_045",
+      "PLANT_050",
+      "PLANT_051",
+      "PLANT_053",
+      "PLANT_059"
+    ]
+  },
+  "sensor_normalization": {
+    "columns": [
+      "Soil_Moisture",
+      "Temperature",
+      "Humidity",
+      "Light_Intensity"
+    ],
+    "mean": [
+      49.93724822998047,
+      27.044687271118164,
+      58.24735641479492,
+      16100.4951171875
+    ],
+    "std": [
+      13.261855125427246,
+      3.4864401817321777,
+      9.51640510559082,
+      2323.292724609375
+    ]
+  }
+}

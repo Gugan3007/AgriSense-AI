@@ -1,0 +1,13 @@
+.venv/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+frontend/node_modules/
+frontend/dist/
+backend/static/uploads/
+dataset/plantvillage_raw/
+ml/saved_model/
+ml/tensorboard_logs/
+backend/agrisense.sqlite3

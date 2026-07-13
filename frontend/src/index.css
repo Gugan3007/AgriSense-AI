@@ -1,0 +1,140 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Sora:wght@600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  font-family: Inter, system-ui, sans-serif;
+  background: #041611;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at 70% 8%, rgba(46, 134, 255, 0.18), transparent 34rem),
+    radial-gradient(circle at 20% 14%, rgba(111, 226, 125, 0.15), transparent 28rem),
+    linear-gradient(135deg, #041611 0%, #08241b 46%, #061a14 100%);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+option {
+  color: #0a2a1f;
+}
+
+@layer components {
+  .glass-card {
+    @apply rounded-[2rem] border border-emerald-100/10 bg-pine/70 shadow-glass backdrop-blur-2xl;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 24px 90px rgba(0, 0, 0, 0.36);
+  }
+
+  .hero-panel {
+    @apply relative overflow-hidden rounded-[2.4rem] border border-emerald-200/10 bg-pine/70 p-5 shadow-glass backdrop-blur-2xl md:p-8;
+  }
+
+  .hero-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(105deg, rgba(15, 61, 46, 0.92), rgba(4, 22, 17, 0.68)),
+      radial-gradient(circle at 85% 10%, rgba(111, 226, 125, 0.18), transparent 18rem);
+    z-index: 0;
+  }
+
+  .hero-panel::after {
+    content: '';
+    position: absolute;
+    inset: -20%;
+    opacity: 0.22;
+    background-image:
+      repeating-radial-gradient(ellipse at 20% 15%, transparent 0 18px, rgba(111, 226, 125, 0.35) 19px 20px),
+      linear-gradient(110deg, transparent 0 48%, rgba(255, 255, 255, 0.06) 49%, transparent 51%);
+    transform: rotate(-8deg);
+  }
+
+  .nav-item {
+    @apply flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold text-emerald-50/65 transition hover:bg-white/[0.06] hover:text-white;
+  }
+
+  .nav-item-active {
+    @apply bg-emerald-300/15 text-white ring-1 ring-emerald-200/10;
+  }
+
+  .mobile-nav {
+    @apply flex flex-col items-center gap-1 rounded-2xl border border-white/10 bg-white/[0.04] px-2 py-3 text-[11px] font-bold text-emerald-50/60;
+  }
+
+  .mobile-nav-active {
+    @apply bg-emerald-300/15 text-white;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded-2xl bg-electric px-5 py-3 text-sm font-black text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-70;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/[0.045] px-5 py-3 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-white/[0.08];
+  }
+
+  .section-title {
+    @apply font-display text-2xl font-black tracking-tight text-white;
+  }
+
+  .field-label {
+    @apply block text-sm font-bold text-emerald-100/80;
+  }
+
+  .field-input {
+    @apply mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-white outline-none transition placeholder:text-emerald-50/35 focus:border-electric/70 focus:ring-4 focus:ring-electric/15;
+  }
+
+  .dropzone {
+    @apply grid h-[440px] cursor-pointer place-items-center rounded-[2rem] border border-dashed border-emerald-100/30 bg-white/[0.035] p-4 transition hover:border-electric hover:bg-electric/10;
+  }
+}
+
+.text-gradient {
+  background: linear-gradient(90deg, #6fe27d, #2e86ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.leaf-orbit {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  opacity: 0.28;
+  background:
+    radial-gradient(ellipse at 20% 80%, rgba(111, 226, 125, 0.16), transparent 28rem),
+    radial-gradient(ellipse at 82% 24%, rgba(46, 134, 255, 0.12), transparent 30rem);
+}
+
+.leaf-orbit::before {
+  content: '';
+  position: absolute;
+  inset: -10%;
+  background-image:
+    linear-gradient(120deg, transparent 0 49%, rgba(247, 249, 244, 0.04) 50%, transparent 51%),
+    repeating-linear-gradient(35deg, transparent 0 28px, rgba(111, 226, 125, 0.05) 29px 30px);
+  mask-image: radial-gradient(circle at center, black, transparent 75%);
+}
+
+@media (max-width: 768px) {
+  .dropzone {
+    height: 310px;
+  }
+}

@@ -1,0 +1,3 @@
+rank,lstm_units,dropout,learning_rate,sequence_length,best_epoch,validation_accuracy,validation_macro_f1,validation_loss,training_seconds
+1,64,0.3,0.001,7,1,0.6417112350463867,0.3706636428833008,1.1359496116638184,111.17
+2,64,0.2,0.001,7,1,0.49197861552238464,0.16487455368041992,1.2558048963546753,115.86
