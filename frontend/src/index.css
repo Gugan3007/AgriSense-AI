@@ -21,7 +21,14 @@ body {
     radial-gradient(circle at 70% 8%, rgba(46, 134, 255, 0.18), transparent 34rem),
     radial-gradient(circle at 20% 14%, rgba(111, 226, 125, 0.15), transparent 28rem),
     linear-gradient(135deg, #041611 0%, #08241b 46%, #061a14 100%);
+  background-attachment: fixed;
 }
+
+::selection { background: rgba(111, 226, 125, 0.28); color: white; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.025); }
+::-webkit-scrollbar-thumb { background: rgba(111, 226, 125, 0.18); border: 3px solid transparent; border-radius: 999px; background-clip: padding-box; }
 
 button,
 input,
@@ -38,6 +45,10 @@ option {
   .glass-card {
     @apply rounded-[2rem] border border-emerald-100/10 bg-pine/70 shadow-glass backdrop-blur-2xl;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 24px 90px rgba(0, 0, 0, 0.36);
+  }
+
+  .glass-card-hover {
+    @apply transition duration-300 hover:-translate-y-1 hover:border-emerald-200/20;
   }
 
   .hero-panel {
@@ -82,7 +93,7 @@ option {
   }
 
   .btn-primary {
-    @apply inline-flex items-center gap-2 rounded-2xl bg-electric px-5 py-3 text-sm font-black text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-70;
+    @apply inline-flex items-center gap-2 rounded-2xl bg-electric px-5 py-3 text-sm font-black text-white shadow-glow transition duration-300 hover:-translate-y-0.5 hover:bg-blue-400 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-electric/25 disabled:cursor-not-allowed disabled:opacity-70;
   }
 
   .btn-secondary {
@@ -131,6 +142,10 @@ option {
     linear-gradient(120deg, transparent 0 49%, rgba(247, 249, 244, 0.04) 50%, transparent 51%),
     repeating-linear-gradient(35deg, transparent 0 28px, rgba(111, 226, 125, 0.05) 29px 30px);
   mask-image: radial-gradient(circle at center, black, transparent 75%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
 
 @media (max-width: 768px) {

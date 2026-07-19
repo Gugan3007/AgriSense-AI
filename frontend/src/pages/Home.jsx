@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Activity, AlertTriangle, Database, Network, ShieldCheck, Sprout, UploadCloud } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowRight, CheckCircle2, Database, Leaf, Network, ShieldCheck, Sprout, UploadCloud } from 'lucide-react';
 import { AccuracySparkline } from '../components/Charts.jsx';
 import { ErrorBanner, GlassCard, MetricCard, PageHeader, Skeleton, StatusPill } from '../components/Primitives.jsx';
 import { useApi } from '../hooks/useApi.js';
@@ -19,6 +19,9 @@ export default function Home() {
       <section className="hero-panel">
         <div className="relative z-10 grid gap-8 xl:grid-cols-[1.1fr_.9fr] xl:items-center">
           <div>
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">
+              <Sprout size={15} /> Precision intelligence for healthier crops
+            </div>
             <PageHeader
               title={<>AI-Powered Crop Stress Detection <span className="text-gradient">You Can Trust</span></>}
               subtitle="Hybrid CNN-LSTM intelligence combines real leaf-image analysis with sequential sensor telemetry, helping growers catch stress before it becomes crop loss."
@@ -29,6 +32,9 @@ export default function Home() {
                 </>
               }
             />
+            <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-emerald-50/55">
+              {['Real-time inference', 'Four stress levels', '7-day trend analysis'].map((item) => <span key={item} className="flex items-center gap-2"><CheckCircle2 size={15} className="text-emerald-300" />{item}</span>)}
+            </div>
             <div className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
               {dataset.loading ? (
                 Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-36" />)
@@ -44,7 +50,7 @@ export default function Home() {
           </div>
 
           <GlassCard className="p-5">
-            <p className="mb-5 text-sm font-bold text-emerald-200">How AgriSense AI works</p>
+            <div className="mb-5 flex items-center justify-between"><p className="text-sm font-bold text-emerald-200">How AgriSense AI works</p><span className="rounded-full bg-white/[0.05] px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-50/45">3-stage pipeline</span></div>
             <div className="grid gap-4 md:grid-cols-3">
               {[
                 ['CNN', 'Leaf feature extraction', 'Leaf texture, lesions, color, vein structure'],
@@ -54,10 +60,10 @@ export default function Home() {
                 <motion.div
                   key={title}
                   whileHover={{ y: -4 }}
-                  className="rounded-3xl border border-emerald-200/10 bg-white/[0.045] p-4"
+                  className="group rounded-3xl border border-emerald-200/10 bg-white/[0.045] p-4 transition hover:border-emerald-200/25 hover:bg-white/[0.07]"
                 >
                   <div className="mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-electric/15 text-electric ring-1 ring-electric/30">
-                    {index === 0 ? <Activity /> : index === 1 ? <Network /> : <ShieldCheck />}
+                    {index === 0 ? <Leaf /> : index === 1 ? <Network /> : <ShieldCheck />}
                   </div>
                   <h3 className="font-display text-xl font-black">{title}</h3>
                   <p className="mt-1 text-sm font-semibold text-emerald-200">{subtitle}</p>
@@ -83,11 +89,11 @@ export default function Home() {
         <GlassCard className="p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="section-title">Recent analyses</h2>
-            <Link to="/history" className="text-sm font-bold text-electric">View all</Link>
+            <Link to="/history" className="flex items-center gap-1 text-sm font-bold text-electric transition hover:gap-2">View all <ArrowRight size={15} /></Link>
           </div>
           {history.loading ? <Skeleton className="h-64" /> : (
             <div className="overflow-hidden rounded-3xl border border-white/10">
-              <table className="w-full min-w-[720px] text-left text-sm">
+              {(history.data?.items || []).length ? <table className="w-full min-w-[720px] text-left text-sm">
                 <thead className="bg-white/[0.05] text-emerald-100/70">
                   <tr>
                     <th className="px-4 py-3">Prediction</th>
@@ -108,7 +114,7 @@ export default function Home() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table> : <div className="grid min-h-56 place-items-center p-6 text-center"><div><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-emerald-300/10 text-emerald-300"><Activity /></div><p className="mt-4 font-bold text-white">No analyses yet</p><p className="mt-1 text-sm text-emerald-50/50">Your crop predictions will appear here.</p><Link to="/upload" className="btn-secondary mt-4 px-4 py-2 text-xs">Start an analysis <ArrowRight size={14} /></Link></div></div>}
             </div>
           )}
         </GlassCard>

@@ -35,7 +35,7 @@ export function MetricCard({ label, value, detail, tone = 'emerald', icon }) {
     red: 'text-red-300',
   }[tone];
   return (
-    <GlassCard className="p-5">
+    <GlassCard className="glass-card-hover p-5">
       <div className={`mb-4 ${toneClass}`}>{icon}</div>
       <p className="text-sm font-medium text-emerald-50/60">{label}</p>
       <p className="mt-1 font-display text-3xl font-black text-white">{value}</p>
