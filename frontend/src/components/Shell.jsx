@@ -55,7 +55,7 @@ export default function Shell() {
               <Activity size={18} />
               <span className="font-semibold">Live ML Stack</span>
             </div>
-            CNN feature extraction, LSTM trend modelling, and real Flask inference are connected.
+            MobileNetV2 leaf analysis, LSTM sensor context, and real Flask inference are connected.
           </div>
         </aside>
 

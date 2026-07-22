@@ -11,7 +11,7 @@ export default function Home() {
   const model = useApi(() => api.get('/model-info'), []);
   const history = useApi(() => api.get('/history?page=1&limit=4'), []);
 
-  const modelAccuracy = model.data ? (model.data.best_validation_accuracy * 100).toFixed(1) : '—';
+  const modelAccuracy = model.data ? ((model.data.staged_evaluation?.normal?.accuracy || model.data.best_validation_accuracy) * 100).toFixed(1) : '—';
 
   return (
     <div>
@@ -24,7 +24,7 @@ export default function Home() {
             </div>
             <PageHeader
               title={<>AI-Powered Crop Stress Detection <span className="text-gradient">You Can Trust</span></>}
-              subtitle="Hybrid CNN-LSTM intelligence combines real leaf-image analysis with sequential sensor telemetry, helping growers catch stress before it becomes crop loss."
+              subtitle="Image-first intelligence combines real leaf analysis with seven-reading sensor context, helping teams investigate crop stress before it becomes crop loss."
               actions={
                 <>
                   <Link to="/upload" className="btn-primary"><UploadCloud size={18} /> Upload & Analyze</Link>
@@ -42,7 +42,7 @@ export default function Home() {
                 <>
                   <MetricCard label="Dataset Rows" value={dataset.data?.row_count?.toLocaleString()} detail="Real-image daily observations" icon={<Database />} />
                   <MetricCard label="Virtual Plants" value={dataset.data?.plant_count} detail="Split by Plant_ID" icon={<Sprout />} />
-                  <MetricCard label="Model Accuracy" value={`${modelAccuracy}%`} detail="Best validation run" tone="blue" icon={<ShieldCheck />} />
+                  <MetricCard label="Model Accuracy" value={`${modelAccuracy}%`} detail="Held-out test set" tone="blue" icon={<ShieldCheck />} />
                   <MetricCard label="Stress Classes" value="4" detail="Healthy, Low, Medium, High" tone="amber" icon={<AlertTriangle />} />
                 </>
               )}
@@ -53,9 +53,9 @@ export default function Home() {
             <div className="mb-5 flex items-center justify-between"><p className="text-sm font-bold text-emerald-200">How AgriSense AI works</p><span className="rounded-full bg-white/[0.05] px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-50/45">3-stage pipeline</span></div>
             <div className="grid gap-4 md:grid-cols-3">
               {[
-                ['CNN', 'Leaf feature extraction', 'Leaf texture, lesions, color, vein structure'],
-                ['LSTM', 'Temporal modelling', 'Seven-day telemetry sequence'],
-                ['Softmax', 'Stress classification', 'Healthy → High risk probabilities'],
+                ['MobileNetV2', 'Leaf feature extraction', 'Leaf texture, lesions, color, vein structure'],
+                ['LSTM', 'Telemetry context', 'Seven normalized sensor readings'],
+                ['80/20 fusion', 'Image-first classification', 'Healthy → High stress probabilities'],
               ].map(([title, subtitle, body], index) => (
                 <motion.div
                   key={title}
@@ -74,7 +74,7 @@ export default function Home() {
             <div className="mt-5 rounded-3xl border border-blue-300/10 bg-blue-400/10 p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-blue-100/70">7-day rolling model performance</p>
+                  <p className="text-sm text-blue-100/70">Held-out test accuracy</p>
                   <p className="font-display text-3xl font-black">{modelAccuracy}%</p>
                 </div>
                 <StatusPill color="#2E86FF">Real metadata</StatusPill>

@@ -1,4 +1,4 @@
-"""Leakage-safe sequence preprocessing for the hybrid CNN-LSTM."""
+"""Leakage-safe preprocessing for the image-first hybrid model."""
 
 from __future__ import annotations
 

@@ -66,7 +66,7 @@ export default function Prediction() {
         <>
           <PageHeader
             title="Prediction Dashboard"
-            subtitle="A live record from the trained CNN-LSTM model, including class probabilities, activation summary, and seven-day sensor trend."
+            subtitle="A live record from the trained image-first model, including class probabilities, activation summary, and seven-reading sensor trend."
             actions={
               <>
                 <Link to="/history" className="btn-secondary"><ArrowLeft size={18} /> Back to Predictions</Link>
@@ -111,7 +111,7 @@ export default function Prediction() {
                 <HeatmapGrid regions={data.cnn_feature_summary?.top_regions} />
                 <div>
                   <p className="text-sm leading-6 text-emerald-50/65">
-                    Activation energy summarizes the final convolutional response used by the temporal model. Top regions mark the strongest visual evidence in the uploaded leaf.
+                    Activation energy summarizes the final convolutional response used by the image classifier. Top regions mark the strongest visual evidence in the uploaded leaf.
                   </p>
                   <div className="mt-4 rounded-3xl border border-white/10 bg-white/[0.04] p-4">
                     <p className="text-sm text-emerald-50/60">Activation energy</p>
@@ -123,7 +123,7 @@ export default function Prediction() {
 
             <GlassCard className="p-5">
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="section-title">LSTM temporal trend</h2>
+                <h2 className="section-title">Sensor telemetry trend</h2>
                 <StatusPill color="#F4B400">{data.lstm_trend?.direction}</StatusPill>
               </div>
               <p className="mb-3 text-xs text-emerald-50/50">Sensor stress score (0–100)</p>

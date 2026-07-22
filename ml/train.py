@@ -1,4 +1,4 @@
-"""Train the AgriSense CNN-LSTM and persist its real artifacts."""
+"""Train the AgriSense image-first hybrid model and persist its artifacts."""
 
 from __future__ import annotations
 
@@ -115,7 +115,7 @@ def train(
     )
     promote_bundle(STAGED_MODEL_PATH, STAGED_CONTRACT_PATH, MODEL_PATH, MODEL_CONTRACT_PATH)
     metadata = {
-        "model_name": model.name,
+        "model_name": inference_model.name,
         "architecture": "MobileNetV2 image encoder + sensor LSTM + image-first probability fusion",
         "class_labels": CLASS_LABELS,
         "input_shapes": {"image": [128, 128, 3], "sensor_sequence": [sequence_length, 4]},

@@ -156,7 +156,7 @@ Expected: FAIL importing `build_models`.
 
 - [ ] **Step 3: Implement the two-branch model**
 
-Use MobileNetV2 without its classification top, global average pooling, and a 128-unit image feature layer. Use Gaussian noise, a 32-unit LSTM, and whole-modality dropout for sensor features. Add separate four-class softmax heads, scale them by `0.8` and `0.2` with serializable Keras layers, and add them into `stress_probabilities`. Compile the training model with categorical cross-entropy on all three outputs and loss weights `1.0`, `0.5`, and `0.1` respectively.
+Use MobileNetV2 without its classification top, global average pooling, and a 128-unit image feature layer. Use Gaussian noise, a 64-unit LSTM, and whole-modality dropout for sensor features. Add separate four-class softmax heads, scale them by `0.8` and `0.2` with serializable Keras layers, and add them into `stress_probabilities`. Compile the training model with categorical cross-entropy on all three outputs and loss weights `1.0`, `0.5`, and `0.1` respectively.
 
 - [ ] **Step 4: Update training for balanced classes and staged output**
 

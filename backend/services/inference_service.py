@@ -1,4 +1,4 @@
-"""Backend-facing inference service for the trained CNN-LSTM model."""
+"""Backend-facing inference service for the trained image-first hybrid model."""
 
 from __future__ import annotations
 
@@ -132,9 +132,17 @@ class InferenceService:
                 if cls._activation_model is None:
                     tf = __import__("tensorflow")
                     model = ModelSingleton.get()
+                    image_input = tf.keras.Input(
+                        shape=tuple(load_contract()["image_size"]),
+                        name="activation_image",
+                    )
+                    image_scaled = model.get_layer("imagenet_rescaling")(image_input)
+                    image_map = model.get_layer("image_encoder")(
+                        image_scaled, training=False
+                    )
                     cls._activation_model = tf.keras.Model(
-                        inputs=model.get_layer("image").input,
-                        outputs=model.get_layer("image_encoder").output,
+                        inputs=image_input,
+                        outputs=image_map,
                         name="agrisense_activation_probe",
                     )
         return cls._activation_model

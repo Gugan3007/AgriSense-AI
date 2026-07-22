@@ -45,7 +45,7 @@ export default function Upload() {
 
       setStage('Extracting CNN features…');
       await new Promise((resolve) => setTimeout(resolve, 450));
-      setStage('Running LSTM sequence analysis…');
+      setStage('Fusing image and sensor probabilities…');
       const prediction = await api.post('/predict', {
         upload_id: upload.data.upload_id,
         plant_type: plantType,
@@ -66,7 +66,7 @@ export default function Upload() {
       <ErrorBanner message={error} />
       <PageHeader
         title="Upload & Analyze"
-        subtitle="Submit a real leaf image and recent sensor telemetry. AgriSense will run the trained CNN-LSTM pipeline and open a live prediction dashboard."
+        subtitle="Submit one current leaf image and recent sensor telemetry. AgriSense will run the trained image-first model and open a live prediction dashboard."
       />
 
       <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">

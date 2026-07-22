@@ -4,7 +4,7 @@
 
 ### Predict Today. Protect Tomorrow.
 
-An end-to-end crop stress detection platform that combines leaf imagery with seven-day sensor telemetry using a hybrid CNN-LSTM model.
+An end-to-end crop stress detection platform that combines one current leaf image with seven-day sensor telemetry using an image-first hybrid model.
 
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
 [![Flask](https://img.shields.io/badge/Flask-3-000000?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
@@ -17,7 +17,7 @@ An end-to-end crop stress detection platform that combines leaf imagery with sev
 
 ## Overview
 
-AgriSense AI is a full-stack machine-learning project for classifying plant stress as **Healthy**, **Low**, **Medium**, or **High**. A TimeDistributed CNN extracts visual features from leaf images, those features are fused with soil moisture, temperature, humidity, and light readings, and stacked LSTM layers learn the temporal pattern.
+AgriSense AI is a full-stack machine-learning project for classifying plant stress as **Healthy**, **Low**, **Medium**, or **High**. A frozen ImageNet-pretrained MobileNetV2 extracts features from the uploaded leaf, while an LSTM summarizes soil moisture, temperature, humidity, and light readings. The final probabilities use a fixed image-first 80/20 fusion so sensor telemetry provides context without overriding the visible leaf evidence.
 
 The platform includes a responsive React dashboard, a Flask REST API, SQLite prediction history, reproducible dataset generation, model training and evaluation scripts, and model explainability summaries.
 
@@ -25,7 +25,8 @@ The platform includes a responsive React dashboard, a Flask REST API, SQLite pre
 
 - Leaf image upload with JPG, PNG, and WebP support
 - Seven-reading sensor sequence for soil moisture, temperature, humidity, and light intensity
-- Hybrid TimeDistributed CNN + sensor fusion + stacked LSTM architecture
+- ImageNet-pretrained MobileNetV2 image encoder plus sensor LSTM
+- Explicit 80% image / 20% sensor probability fusion
 - Four-class stress probabilities with confidence scores
 - CNN activation heatmap summaries and sensor-trend interpretation
 - Prediction history and detailed result dashboards
@@ -39,30 +40,23 @@ The checked-in evaluation reports describe the current trained run:
 
 | Metric | Result |
 |---|---:|
-| Test accuracy | 91.05% |
-| Macro precision | 88.30% |
-| Macro recall | 91.65% |
-| Macro F1 | 89.42% |
-| Test samples | 190 |
-| Best validation accuracy | 97.86% |
+| Test accuracy | 81.92% |
+| Macro precision | 79.49% |
+| Macro recall | 79.96% |
+| Macro F1 | 79.02% |
+| Image-only macro F1 | 79.02% |
+| Sensor-only macro F1 | 49.44% |
+| Test samples | 177 |
+| Best validation accuracy | 88.27% |
 
-The split is performed by `Plant_ID` (44 train, 10 validation, and 10 test plants) to prevent windows from the same virtual plant appearing across splits. See [`ml/reports`](ml/reports) for the confusion matrix, ROC curves, classification report, training history, and preprocessing statistics.
+The split is performed by `Plant_ID` (44 train, 10 validation, and 10 test plants), and source-image identities are checked across splits. The generated dataset uses each source image at most once. Evaluation also measures each modality independently and runs counterfactual image/sensor swaps; image sensitivity is 0.312 mean total variation versus 0.038 for sensors. See [`ml/reports`](ml/reports) for the confusion matrix, ROC curves, classification report, training history, and preprocessing statistics.
 
 ## Architecture
 
 ```text
-7 × leaf images (128 × 128 × 3) ──> TimeDistributed CNN ──┐
-                                                          ├─> Feature fusion
-7 × sensor readings (4 features) ─────────────────────────┘
-                                                                  │
-                                                                  v
-                                                    LSTM (128, sequences)
-                                                                  │
-                                                                  v
-                                                        LSTM (64, summary)
-                                                                  │
-                                                                  v
-                                                     Dense + Softmax (4)
+1 leaf image (128 × 128 × 3) ──> MobileNetV2 ──> image Softmax ──> × 0.8 ──┐
+                                                                            ├─> Add ──> 4 stress probabilities
+7 sensor readings (4 features) ──> LSTM ───────> sensor Softmax ─> × 0.2 ──┘
 ```
 
 ```text
@@ -80,7 +74,7 @@ React + Vite frontend  <── REST/JSON ──>  Flask API  <──>  TensorFlo
 | Frontend | React 19, Vite, Tailwind CSS, React Router, Recharts, Framer Motion, Axios |
 | Backend | Flask, Flask-CORS, Flask-SQLAlchemy, SQLite |
 | Machine learning | TensorFlow/Keras, NumPy, pandas, scikit-learn, Matplotlib, Pillow |
-| Model | TimeDistributed CNN, feature fusion, stacked LSTM, softmax classifier |
+| Model | Frozen MobileNetV2, sensor LSTM, auxiliary modality heads, image-first probability fusion |
 
 ## Project structure
 
@@ -137,7 +131,7 @@ Train and evaluate the model:
 python ml/train.py
 ```
 
-This writes the inference model to `ml/saved_model/agrisense_cnn_lstm.keras` and refreshes the artifacts in `ml/reports/`. Training defaults to 18 epochs, a batch size of 16, and a sequence length of 7; use `python ml/train.py --help` to see the available options.
+Training first writes a staged model and versioned preprocessing contract, evaluates all four test classes plus modality reliance, and promotes the pair to `ml/saved_model/` only when acceptance checks pass. It then refreshes `ml/reports/`. Defaults are 18 epochs, a batch size of 16, and a sensor sequence length of 7; use `python ml/train.py --help` to see the available options.
 
 ### 4. Start the API
 
@@ -234,13 +228,13 @@ The smoke test checks dataset and model metadata, image upload, real inference, 
 
 The dataset combines **real PlantVillage images and disease labels** with a **simulated temporal structure and sensor telemetry**. Virtual plant IDs, timestamps, image ordering, health status, stress grouping, and all sensor values are synthetic and reproducibly generated with seed `42`.
 
-The current web inference flow repeats one uploaded leaf image across the model’s seven visual timesteps while using the supplied sensor sequence. Therefore, the application is an educational/research prototype—not a field-validated diagnostic system. Its outputs should not be used as the sole basis for agricultural, treatment, safety, or financial decisions.
+The production model consumes one uploaded leaf image and seven sensor readings, matching the training input contract. However, the timeline and telemetry are simulated because PlantVillage has no longitudinal sensor data. Therefore, the application is an educational/research prototype—not a field-validated diagnostic system. Its outputs should not be used as the sole basis for agricultural, treatment, safety, or financial decisions.
 
 For the complete data statement, distributions, and rebuild instructions, read the [dataset documentation](dataset/README_dataset.md).
 
 ## Roadmap
 
-- Accept a true seven-image sequence during inference
+- Validate the image-first model on independent field imagery and real telemetry
 - Add authentication and per-user prediction histories
 - Package model artifacts through versioned release storage
 - Validate performance on independent real-world longitudinal field data

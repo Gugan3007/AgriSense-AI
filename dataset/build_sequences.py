@@ -187,7 +187,7 @@ def write_readme(path: Path, stats: dict[str, object]) -> None:
     content = f"""# AgriSense AI sequential dataset
 
 This dataset combines real PlantVillage leaf images with a reproducible simulated
-timeline and plausible plant-health telemetry for CNN-LSTM experimentation.
+timeline and plausible plant-health telemetry for image-first hybrid experimentation.
 
 ## Provenance and honesty
 

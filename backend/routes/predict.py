@@ -1,4 +1,4 @@
-"""Prediction endpoint backed by the real trained CNN-LSTM model."""
+"""Prediction endpoint backed by the real trained image-first hybrid model."""
 
 from __future__ import annotations
 

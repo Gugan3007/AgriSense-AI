@@ -6,7 +6,7 @@ export default function About() {
     <div>
       <PageHeader
         title="About AgriSense AI"
-        subtitle="A final-year deep learning case study built as a real, runnable product: honest dataset construction, trained CNN-LSTM inference, Flask persistence, and a polished React interface."
+        subtitle="A final-year deep learning case study built as a real, runnable product: honest dataset construction, trained image-first inference, Flask persistence, and a polished React interface."
       />
       <div className="grid gap-5 xl:grid-cols-3">
         {[

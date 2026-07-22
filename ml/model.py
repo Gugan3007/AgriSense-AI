@@ -1,4 +1,4 @@
-"""Functional Keras implementation of the required hybrid CNN-LSTM."""
+"""Functional Keras implementation of the image-first hybrid classifier."""
 
 from __future__ import annotations
 
@@ -77,7 +77,7 @@ def compile_model(model, learning_rate: float = 1e-3):
 
 def build_models(
     sequence_length: int = DEFAULT_SEQUENCE_LENGTH,
-    lstm_units: int = 128,
+    lstm_units: int = 64,
     dropout: float = 0.3,
     image_weights: str | None = "imagenet",
 ):
@@ -109,9 +109,7 @@ def build_models(
     )(image_features)
 
     noisy_sensors = layers.GaussianNoise(0.15, name="sensor_noise")(sensor_input)
-    sensor_features = layers.LSTM(
-        min(lstm_units, 64), name="sensor_lstm"
-    )(noisy_sensors)
+    sensor_features = layers.LSTM(lstm_units, name="sensor_lstm")(noisy_sensors)
     sensor_features = layers.Dense(32, activation="relu", name="sensor_features")(sensor_features)
     # A single dropout mask per sample removes the whole sensor representation
     # during training often enough to prevent sensor-only shortcut learning.
@@ -146,7 +144,7 @@ def build_models(
 
 def build_model(
     sequence_length: int = DEFAULT_SEQUENCE_LENGTH,
-    lstm_units: int = 128,
+    lstm_units: int = 64,
     dropout: float = 0.3,
     image_weights: str | None = "imagenet",
 ):

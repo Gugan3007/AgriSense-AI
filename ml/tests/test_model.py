@@ -52,6 +52,11 @@ class ModelArchitectureTests(unittest.TestCase):
     def test_model_is_smaller_than_the_previous_flatten_architecture(self) -> None:
         self.assertLess(self.inference_model.count_params(), 4_000_000)
 
+    def test_requested_lstm_units_are_not_silently_capped(self) -> None:
+        _, model = build_models(lstm_units=128, image_weights=None)
+
+        self.assertEqual(model.get_layer("sensor_lstm").units, 128)
+
 
 if __name__ == "__main__":
     unittest.main()

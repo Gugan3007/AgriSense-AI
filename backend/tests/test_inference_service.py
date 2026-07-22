@@ -4,6 +4,8 @@ import sys
 import unittest
 from pathlib import Path
 
+import numpy as np
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_DIR = PROJECT_ROOT / "backend"
 if str(BACKEND_DIR) not in sys.path:
@@ -43,6 +45,15 @@ class InferenceServiceTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "between 5 and 100"):
             InferenceService.normalize_sensor_readings(readings)
+
+    def test_activation_model_accepts_the_production_image_input(self) -> None:
+        InferenceService._activation_model = None
+
+        activations = InferenceService._get_activation_model().predict(
+            np.zeros((1, 128, 128, 3), dtype="float32"), verbose=0
+        )
+
+        self.assertEqual(activations.shape, (1, 4, 4, 1280))
 
 
 if __name__ == "__main__":

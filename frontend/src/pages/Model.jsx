@@ -11,25 +11,26 @@ export default function Model() {
       <ErrorBanner message={error} />
       <PageHeader
         title="Model Architecture"
-        subtitle="The deployed model follows the project specification exactly: TimeDistributed CNN features, sensor fusion, stacked LSTM layers, and a four-class softmax stress head."
+        subtitle="The deployed model uses a pretrained MobileNetV2 image encoder, a seven-reading sensor LSTM, and explicit image-first probability fusion."
       />
       {loading ? <Skeleton className="h-[760px]" /> : (
         <>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <MetricCard label="Held-out test accuracy" value={`${(data.staged_evaluation.normal.accuracy * 100).toFixed(1)}%`} detail={`${data.staged_evaluation.test_samples} unseen windows`} icon={<Network />} />
             <MetricCard label="Best validation accuracy" value={`${(data.best_validation_accuracy * 100).toFixed(1)}%`} detail="Restored best checkpoint" icon={<Network />} />
-            <MetricCard label="Parameters" value={data.parameter_count.toLocaleString()} detail="Trainable CNN-LSTM weights" tone="blue" icon={<FileText />} />
-            <MetricCard label="Completed epochs" value={data.hyperparameters.completed_epochs} detail={`Requested ${data.hyperparameters.requested_epochs}`} tone="amber" icon={<Network />} />
+            <MetricCard label="Image-only macro F1" value={`${(data.staged_evaluation.image_only.f1_macro * 100).toFixed(1)}%`} detail={`Sensors alone: ${(data.staged_evaluation.sensor_only.f1_macro * 100).toFixed(1)}%`} tone="blue" icon={<FileText />} />
+            <MetricCard label="Parameters" value={data.parameter_count.toLocaleString()} detail={`${data.hyperparameters.completed_epochs} completed epochs`} tone="amber" icon={<FileText />} />
           </div>
 
           <GlassCard className="mt-5 p-5">
-            <h2 className="section-title">CNN → Sensor Fusion → LSTM → Softmax</h2>
+            <h2 className="section-title">Image and telemetry branches → image-first fusion</h2>
             <div className="mt-5 grid gap-4 lg:grid-cols-5">
               {[
-                ['Image sequence', '7 × 128 × 128 × 3'],
-                ['CNN backbone', 'Conv32 → Conv64 → Conv128'],
-                ['Fusion', 'CNN features + 4 sensors'],
-                ['Temporal layers', 'LSTM 128 → LSTM 64'],
-                ['Classifier', 'Dense 64 → Softmax 4'],
+                ['Current leaf', '1 × 128 × 128 × 3'],
+                ['Image encoder', 'Frozen MobileNetV2 → Softmax 4'],
+                ['Sensor sequence', '7 × 4 normalized readings'],
+                ['Temporal branch', 'LSTM 64 → Softmax 4'],
+                ['Probability fusion', '80% image + 20% sensors'],
               ].map(([title, body], index) => (
                 <div key={title} className="relative rounded-3xl border border-white/10 bg-white/[0.04] p-5">
                   <p className="text-xs font-bold text-electric">0{index + 1}</p>

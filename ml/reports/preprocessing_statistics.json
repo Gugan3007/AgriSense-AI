@@ -1,6 +1,6 @@
 {
   "csv_path": "/Users/gugansaravanan/Desktop/agrisense-ai/dataset/sequential_data.csv",
-  "valid_rows": 1583,
+  "valid_rows": 1593,
   "missing_rows_skipped": 0,
   "image_size": [
     128,
@@ -27,27 +27,27 @@
     "test": 10
   },
   "window_counts": {
-    "train": 822,
-    "validation": 187,
-    "test": 190
+    "train": 836,
+    "validation": 196,
+    "test": 177
   },
   "label_distribution": {
     "train": {
-      "Healthy": 151,
-      "Low": 174,
-      "Medium": 325,
-      "High": 172
+      "Healthy": 157,
+      "Low": 168,
+      "Medium": 340,
+      "High": 171
     },
     "validation": {
-      "Healthy": 42,
-      "Low": 23,
-      "Medium": 92,
-      "High": 30
+      "Healthy": 50,
+      "Low": 21,
+      "Medium": 96,
+      "High": 29
     },
     "test": {
-      "Healthy": 43,
-      "Low": 22,
-      "Medium": 93,
+      "Healthy": 35,
+      "Low": 23,
+      "Medium": 87,
       "High": 32
     }
   },
@@ -140,16 +140,16 @@
       "Light_Intensity"
     ],
     "mean": [
-      49.93724822998047,
-      27.044687271118164,
-      58.24735641479492,
-      16100.4951171875
+      52.92901611328125,
+      26.534635543823242,
+      58.42843246459961,
+      15834.1376953125
     ],
     "std": [
-      13.261855125427246,
-      3.4864401817321777,
-      9.51640510559082,
-      2323.292724609375
+      7.110037803649902,
+      1.9916373491287231,
+      6.547282695770264,
+      1985.55029296875
     ]
   }
 }
