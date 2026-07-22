@@ -1,9 +1,10 @@
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Clock, Download, Share2, Zap } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Clock, Download, Share2 } from 'lucide-react';
 import { ProbabilityBars, TrendLine } from '../components/Charts.jsx';
 import { ErrorBanner, GlassCard, PageHeader, Skeleton, StatusPill } from '../components/Primitives.jsx';
 import { useApi } from '../hooks/useApi.js';
 import { api, assetUrl, stressColors } from '../utils/api.js';
+import { isConclusive } from '../utils/analysis.js';
 
 function HeatmapGrid({ regions = [] }) {
   const top = new Map(regions.map((region) => [`${region.row}-${region.column}`, region.score]));
@@ -58,6 +59,7 @@ export default function Prediction() {
   const { data, loading, error } = useApi(() => api.get(`/history/${id}`), [id]);
 
   if (loading) return <Skeleton className="h-[720px]" />;
+  const conclusive = isConclusive(data);
 
   return (
     <div>
@@ -65,8 +67,8 @@ export default function Prediction() {
       {!data ? null : (
         <>
           <PageHeader
-            title="Prediction Dashboard"
-            subtitle="A live record from the trained image-first model, including class probabilities, activation summary, and seven-reading sensor trend."
+            title={conclusive ? 'Stress Analysis' : 'Analysis Inconclusive'}
+            subtitle={conclusive ? 'A calibrated analysis with image, crop, and sensor evidence.' : 'The model could not distinguish the stress classes reliably. No stress conclusion is being presented.'}
             actions={
               <>
                 <Link to="/history" className="btn-secondary"><ArrowLeft size={18} /> Back to Predictions</Link>
@@ -85,11 +87,14 @@ export default function Prediction() {
             <GlassCard className="p-5">
               <div className="flex flex-col justify-between gap-4 md:flex-row">
                 <div>
-                  <StatusPill color={stressColors[data.predicted_class]}>{data.predicted_class}</StatusPill>
-                  <h2 className="mt-4 font-display text-5xl font-black text-white">
-                    {(data.confidence * 100).toFixed(1)}%
-                  </h2>
-                  <p className="mt-2 text-emerald-50/60">model confidence</p>
+                  {conclusive ? <>
+                    <StatusPill color={stressColors[data.predicted_class]}>{data.predicted_class}</StatusPill>
+                    <h2 className="mt-4 font-display text-5xl font-black text-white">{(data.confidence * 100).toFixed(1)}%</h2>
+                    <p className="mt-2 text-emerald-50/60">calibrated model confidence</p>
+                  </> : <>
+                    <StatusPill color="#F4B400"><AlertTriangle size={14} /> Insufficient evidence</StatusPill>
+                    <p className="mt-5 max-w-lg text-lg leading-7 text-amber-100">Retake a clear centered leaf image and verify the sensor readings before trying again.</p>
+                  </>}
                 </div>
                 <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 text-sm text-emerald-50/65">
                   <p className="flex items-center gap-2 font-bold text-white"><Clock size={16} /> Prediction time</p>
@@ -98,6 +103,17 @@ export default function Prediction() {
                 </div>
               </div>
               <ProbabilityBars probabilities={data.class_probabilities} />
+            </GlassCard>
+          </div>
+
+          <div className="mt-5 grid gap-5 xl:grid-cols-2">
+            <GlassCard className="p-5">
+              <h2 className="section-title">Analysis observations</h2>
+              <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-emerald-50/70">{(data.observations || []).map((item) => <li key={item}>{item}</li>)}</ul>
+            </GlassCard>
+            <GlassCard className="p-5">
+              <h2 className="section-title">Recommended next steps</h2>
+              <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-emerald-50/70">{(data.recommendations || []).map((item) => <li key={item}>{item}</li>)}</ul>
             </GlassCard>
           </div>
 

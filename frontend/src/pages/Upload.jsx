@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CloudUpload, FileImage, Leaf, Loader2, Plus, WandSparkles } from 'lucide-react';
+import { AlertTriangle, CloudUpload, Loader2, Plus, WandSparkles } from 'lucide-react';
 import { ErrorBanner, GlassCard, PageHeader } from '../components/Primitives.jsx';
 import { api, sensorColumns } from '../utils/api.js';
+import { uploadErrorDetails } from '../utils/analysis.js';
 
 const initialReadings = Array.from({ length: 7 }, (_, index) => ({
   day: index + 1,
@@ -20,7 +21,7 @@ export default function Upload() {
   const [useSimulated, setUseSimulated] = useState(true);
   const [readings, setReadings] = useState(initialReadings);
   const [stage, setStage] = useState('');
-  const [error, setError] = useState('');
+  const [alert, setAlert] = useState(null);
 
   const preview = useMemo(() => (file ? URL.createObjectURL(file) : ''), [file]);
   const busy = Boolean(stage);
@@ -33,12 +34,12 @@ export default function Upload() {
 
   const analyze = async () => {
     if (!file) {
-      setError('Upload one leaf image before analyzing.');
+      setAlert({ status: 'error', message: 'Upload one leaf image before analyzing.', guidance: [] });
       return;
     }
-    setError('');
+    setAlert(null);
     try {
-      setStage('Uploading leaf image…');
+      setStage('Validating leaf image…');
       const form = new FormData();
       form.append('image', file);
       const upload = await api.post('/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -55,7 +56,7 @@ export default function Upload() {
       await new Promise((resolve) => setTimeout(resolve, 350));
       navigate(`/prediction/${prediction.data.prediction_id}`);
     } catch (err) {
-      setError(err.response?.data?.error || err.message || 'Analysis failed.');
+      setAlert(uploadErrorDetails(err));
     } finally {
       setStage('');
     }
@@ -63,7 +64,14 @@ export default function Upload() {
 
   return (
     <div>
-      <ErrorBanner message={error} />
+      <ErrorBanner message={alert?.status === 'error' ? alert.message : ''} />
+      {alert && alert.status !== 'error' && (
+        <div className={`mb-5 rounded-3xl border px-5 py-4 ${alert.status === 'rejected' ? 'border-red-300/30 bg-red-500/10 text-red-100' : 'border-amber-300/30 bg-amber-500/10 text-amber-100'}`}>
+          <p className="flex items-center gap-2 font-bold"><AlertTriangle size={18} /> Image analysis blocked</p>
+          <p className="mt-2 text-sm">{alert.message}</p>
+          {alert.guidance.length > 0 && <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">{alert.guidance.map((item) => <li key={item}>{item}</li>)}</ul>}
+        </div>
+      )}
       <PageHeader
         title="Upload & Analyze"
         subtitle="Submit one current leaf image and recent sensor telemetry. AgriSense will run the trained image-first model and open a live prediction dashboard."
@@ -76,7 +84,7 @@ export default function Upload() {
               type="file"
               accept="image/png,image/jpeg,image/webp"
               className="sr-only"
-              onChange={(event) => setFile(event.target.files?.[0] || null)}
+              onChange={(event) => { setFile(event.target.files?.[0] || null); setAlert(null); }}
             />
             {preview ? (
               <img src={preview} alt="Uploaded leaf preview" className="h-full w-full rounded-[1.7rem] object-cover" />
@@ -93,7 +101,7 @@ export default function Upload() {
             <label className="field-label">
               Plant type
               <select value={plantType} onChange={(event) => setPlantType(event.target.value)} className="field-input">
-                {['Apple', 'Tomato', 'Potato', 'Corn', 'Grape', 'Pepper', 'Strawberry', 'Soybean'].map((crop) => (
+                {['Apple', 'Cherry (sour)', 'Corn', 'Grape', 'Peach', 'Pepper bell', 'Potato', 'Strawberry', 'Tomato'].map((crop) => (
                   <option key={crop}>{crop}</option>
                 ))}
               </select>

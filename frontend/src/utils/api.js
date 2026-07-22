@@ -18,6 +18,7 @@ export const stressColors = {
   Low: '#7DDCFF',
   Medium: '#F4B400',
   High: '#E14B4B',
+  Inconclusive: '#F4B400',
 };
 
 export const sensorColumns = ['Soil_Moisture', 'Temperature', 'Humidity', 'Light_Intensity'];
