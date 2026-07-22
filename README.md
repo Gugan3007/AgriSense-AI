@@ -17,17 +17,18 @@ An end-to-end crop stress detection platform that combines one current leaf imag
 
 ## Overview
 
-AgriSense AI is a full-stack machine-learning project for classifying plant stress as **Healthy**, **Low**, **Medium**, or **High**. A frozen ImageNet-pretrained MobileNetV2 extracts features from the uploaded leaf, while an LSTM summarizes soil moisture, temperature, humidity, and light readings. The final probabilities use a fixed image-first 80/20 fusion so sensor telemetry provides context without overriding the visible leaf evidence.
+AgriSense AI is a full-stack machine-learning project for analyzing plant stress as **Healthy**, **Low**, **Medium**, or **High**. A fine-tuned ImageNet-pretrained MobileNetV2 extracts stress and crop evidence from a validated leaf image, while an LSTM summarizes soil moisture, temperature, humidity, and light readings. The final probabilities use a fixed image-first 80/20 fusion so sensor telemetry provides context without overriding visible leaf evidence. A calibrated decision policy returns an honest **inconclusive** analysis when the stress evidence is not reliable enough.
 
 The platform includes a responsive React dashboard, a Flask REST API, SQLite prediction history, reproducible dataset generation, model training and evaluation scripts, and model explainability summaries.
 
 ## Highlights
 
-- Leaf image upload with JPG, PNG, and WebP support
+- Leaf image upload with JPG, PNG, and WebP support, plus geometry, quality, and leaf-likeness validation
 - Seven-reading sensor sequence for soil moisture, temperature, humidity, and light intensity
-- ImageNet-pretrained MobileNetV2 image encoder plus sensor LSTM
+- Fine-tuned MobileNetV2 image encoder with a nine-crop evidence head plus sensor LSTM
 - Explicit 80% image / 20% sensor probability fusion
-- Four-class stress probabilities with confidence scores
+- Calibrated completed/inconclusive analyses instead of forced four-class conclusions
+- Structured non-leaf, low-quality, tiny-image, and uncertain-image alerts with retry guidance
 - CNN activation heatmap summaries and sensor-trend interpretation
 - Prediction history and detailed result dashboards
 - Dataset explorer and model-performance reports
@@ -40,23 +41,31 @@ The checked-in evaluation reports describe the current trained run:
 
 | Metric | Result |
 |---|---:|
-| Test accuracy | 81.92% |
-| Macro precision | 79.49% |
-| Macro recall | 79.96% |
-| Macro F1 | 79.02% |
-| Image-only macro F1 | 79.02% |
-| Sensor-only macro F1 | 49.44% |
-| Test samples | 177 |
-| Best validation accuracy | 88.27% |
+| Full-coverage test accuracy | 91.99% |
+| Macro precision | 91.58% |
+| Macro recall | 92.77% |
+| Macro F1 | 91.99% |
+| Multiclass Brier score | 0.124 |
+| Image-only macro F1 | 91.23% |
+| Sensor-only macro F1 | 63.32% |
+| Crop recognition accuracy | 95.45% |
+| Reliable-result coverage | 78.32% |
+| Reliable-result accuracy | 99.30% |
+| Genuine-leaf false rejection | 2.19% |
+| Deterministic non-leaf cases blocked | 5 / 5 |
+| Test samples | 549 |
+| Best validation accuracy | 96.30% |
 
-The split is performed by `Plant_ID` (44 train, 10 validation, and 10 test plants), and source-image identities are checked across splits. The generated dataset uses each source image at most once. Evaluation also measures each modality independently and runs counterfactual image/sensor swaps; image sensitivity is 0.312 mean total variation versus 0.038 for sensors. See [`ml/reports`](ml/reports) for the confusion matrix, ROC curves, classification report, training history, and preprocessing statistics.
+The split is performed by `Plant_ID` (134 train, 29 validation, and 29 test plants), and source-image identities are checked across splits. The generated 4,764-row dataset uses each source image at most once. Evaluation also measures each modality independently and runs counterfactual image/sensor swaps; image sensitivity is 0.228 mean total variation versus 0.047 for sensors. “Reliable-result accuracy” is selective accuracy on the 78.32% of held-out windows that passed the calibrated decision policy; the remaining cases are explicitly inconclusive. See [`ml/reports`](ml/reports) for the confusion matrix, ROC curves, classification report, training history, exact probabilities, and preprocessing statistics.
 
 ## Architecture
 
 ```text
-1 leaf image (128 × 128 × 3) ──> MobileNetV2 ──> image Softmax ──> × 0.8 ──┐
-                                                                            ├─> Add ──> 4 stress probabilities
-7 sensor readings (4 features) ──> LSTM ───────> sensor Softmax ─> × 0.2 ──┘
+validated leaf (128 × 128 × 3) ──> fine-tuned MobileNetV2 ──> stress + crop evidence
+                                                            │
+image stress Softmax ──> × 0.8 ──┐                          │
+                                  ├─> fusion ─> calibrated completed/inconclusive analysis
+sensor LSTM Softmax ──> × 0.2 ───┘
 ```
 
 ```text
@@ -74,7 +83,7 @@ React + Vite frontend  <── REST/JSON ──>  Flask API  <──>  TensorFlo
 | Frontend | React 19, Vite, Tailwind CSS, React Router, Recharts, Framer Motion, Axios |
 | Backend | Flask, Flask-CORS, Flask-SQLAlchemy, SQLite |
 | Machine learning | TensorFlow/Keras, NumPy, pandas, scikit-learn, Matplotlib, Pillow |
-| Model | Frozen MobileNetV2, sensor LSTM, auxiliary modality heads, image-first probability fusion |
+| Model | Fine-tuned MobileNetV2, crop head, sensor LSTM, auxiliary modality heads, image-first probability fusion, reliability calibration |
 
 ## Project structure
 
@@ -131,7 +140,7 @@ Train and evaluate the model:
 python ml/train.py
 ```
 
-Training first writes a staged model and versioned preprocessing contract, evaluates all four test classes plus modality reliance, and promotes the pair to `ml/saved_model/` only when acceptance checks pass. It then refreshes `ml/reports/`. Defaults are 18 epochs, a batch size of 16, and a sensor sequence length of 7; use `python ml/train.py --help` to see the available options.
+Training first writes a staged model and schema-v2 preprocessing/calibration contract, evaluates all four test classes, crop recognition, modality reliance, genuine-leaf acceptance, deterministic non-leaf rejection, and selective reliability, then promotes the pair to `ml/saved_model/` only when every acceptance check passes. It then refreshes `ml/reports/`. Defaults are 18 frozen-head epochs plus up to 8 fine-tuning epochs, a batch size of 16, and a sensor sequence length of 7; use `python ml/train.py --help` to see the available options.
 
 ### 4. Start the API
 
@@ -170,8 +179,8 @@ VITE_API_BASE_URL=http://127.0.0.1:5000
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `GET` | `/health` | API health check |
-| `POST` | `/upload` | Upload a leaf image and receive an upload ID |
-| `POST` | `/predict` | Run stress inference for an upload and sensor sequence |
+| `POST` | `/upload` | Validate a leaf image and receive an upload ID, or structured HTTP 422 guidance |
+| `POST` | `/predict` | Return and persist a completed or inconclusive analysis |
 | `GET` | `/history` | List paginated predictions |
 | `GET` | `/history/:id` | Get a prediction and its explanation details |
 | `GET` | `/dataset-info` | Get generated dataset statistics and sample rows |
@@ -222,13 +231,13 @@ After the raw images and trained model are available, run the end-to-end API smo
 .venv/bin/python backend/tests/smoke_test.py
 ```
 
-The smoke test checks dataset and model metadata, image upload, real inference, prediction history, and the contact endpoint.
+The smoke test checks dataset/model metadata, an accepted completed analysis, a deliberately inconclusive analysis, rejection of a real non-leaf UI screenshot, persistence, and the contact endpoint.
 
 ## Dataset provenance and limitations
 
 The dataset combines **real PlantVillage images and disease labels** with a **simulated temporal structure and sensor telemetry**. Virtual plant IDs, timestamps, image ordering, health status, stress grouping, and all sensor values are synthetic and reproducibly generated with seed `42`.
 
-The production model consumes one uploaded leaf image and seven sensor readings, matching the training input contract. However, the timeline and telemetry are simulated because PlantVillage has no longitudinal sensor data. Therefore, the application is an educational/research prototype—not a field-validated diagnostic system. Its outputs should not be used as the sole basis for agricultural, treatment, safety, or financial decisions.
+The production model consumes one uploaded leaf image and seven sensor readings, matching the training input contract. The validator is calibrated against supported PlantVillage crops and a small deterministic negative suite; it is not a general-purpose botanical detector. The timeline and telemetry are simulated because PlantVillage has no longitudinal sensor data, and the test images come from the same source domain as training. Therefore, the application is an educational/research prototype—not a field-validated diagnostic system. Its outputs should not be used as the sole basis for agricultural, treatment, safety, or financial decisions.
 
 For the complete data statement, distributions, and rebuild instructions, read the [dataset documentation](dataset/README_dataset.md).
 

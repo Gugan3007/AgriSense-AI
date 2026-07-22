@@ -11,14 +11,16 @@ export default function Model() {
       <ErrorBanner message={error} />
       <PageHeader
         title="Model Architecture"
-        subtitle="The deployed model uses a pretrained MobileNetV2 image encoder, a seven-reading sensor LSTM, and explicit image-first probability fusion."
+        subtitle="The deployed model uses a fine-tuned MobileNetV2 image encoder, crop evidence, a seven-reading sensor LSTM, calibrated reliability, and image-first probability fusion."
       />
       {loading ? <Skeleton className="h-[760px]" /> : (
         <>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <MetricCard label="Held-out test accuracy" value={`${(data.staged_evaluation.normal.accuracy * 100).toFixed(1)}%`} detail={`${data.staged_evaluation.test_samples} unseen windows`} icon={<Network />} />
-            <MetricCard label="Best validation accuracy" value={`${(data.best_validation_accuracy * 100).toFixed(1)}%`} detail="Restored best checkpoint" icon={<Network />} />
+            <MetricCard label="Reliable-result accuracy" value={`${(data.staged_evaluation.selective.accuracy * 100).toFixed(1)}%`} detail={`${(data.staged_evaluation.selective.coverage * 100).toFixed(1)}% coverage; otherwise inconclusive`} icon={<Network />} />
             <MetricCard label="Image-only macro F1" value={`${(data.staged_evaluation.image_only.f1_macro * 100).toFixed(1)}%`} detail={`Sensors alone: ${(data.staged_evaluation.sensor_only.f1_macro * 100).toFixed(1)}%`} tone="blue" icon={<FileText />} />
+            <MetricCard label="Crop recognition" value={`${(data.staged_evaluation.crop.accuracy * 100).toFixed(1)}%`} detail={`${data.staged_evaluation.crop.class_count} supported crops`} tone="blue" icon={<FileText />} />
+            <MetricCard label="Real-leaf rejection" value={`${(data.staged_evaluation.leaf_validation.false_rejection_rate * 100).toFixed(1)}%`} detail={`${data.staged_evaluation.negative_suite.blocked}/${data.staged_evaluation.negative_suite.samples} non-leaf cases blocked`} tone="amber" icon={<FileText />} />
             <MetricCard label="Parameters" value={data.parameter_count.toLocaleString()} detail={`${data.hyperparameters.completed_epochs} completed epochs`} tone="amber" icon={<FileText />} />
           </div>
 
@@ -27,10 +29,10 @@ export default function Model() {
             <div className="mt-5 grid gap-4 lg:grid-cols-5">
               {[
                 ['Current leaf', '1 × 128 × 128 × 3'],
-                ['Image encoder', 'Frozen MobileNetV2 → Softmax 4'],
+                ['Image encoder', 'Fine-tuned MobileNetV2 → stress + crop heads'],
                 ['Sensor sequence', '7 × 4 normalized readings'],
                 ['Temporal branch', 'LSTM 64 → Softmax 4'],
-                ['Probability fusion', '80% image + 20% sensors'],
+                ['Decision policy', 'Fusion → calibrated result or inconclusive'],
               ].map(([title, body], index) => (
                 <div key={title} className="relative rounded-3xl border border-white/10 bg-white/[0.04] p-5">
                   <p className="text-xs font-bold text-electric">0{index + 1}</p>

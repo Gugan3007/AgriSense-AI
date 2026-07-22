@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { AlertTriangle, CloudUpload, Loader2, Plus, WandSparkles } from 'lucide-react';
 import { ErrorBanner, GlassCard, PageHeader } from '../components/Primitives.jsx';
 import { api, sensorColumns } from '../utils/api.js';
-import { uploadErrorDetails } from '../utils/analysis.js';
+import { CROP_OPTIONS, uploadErrorDetails } from '../utils/analysis.js';
 
 const initialReadings = Array.from({ length: 7 }, (_, index) => ({
   day: index + 1,
@@ -101,8 +101,8 @@ export default function Upload() {
             <label className="field-label">
               Plant type
               <select value={plantType} onChange={(event) => setPlantType(event.target.value)} className="field-input">
-                {['Apple', 'Cherry (sour)', 'Corn', 'Grape', 'Peach', 'Pepper bell', 'Potato', 'Strawberry', 'Tomato'].map((crop) => (
-                  <option key={crop}>{crop}</option>
+                {CROP_OPTIONS.map((crop) => (
+                  <option key={crop.value} value={crop.value}>{crop.label}</option>
                 ))}
               </select>
             </label>

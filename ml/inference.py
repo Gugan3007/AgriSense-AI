@@ -79,6 +79,7 @@ def _prepare_sensors(sensor_sequence) -> np.ndarray:
 def predict_stress(image, sensor_sequence) -> dict:
     """Predict stress from one current image and seven sensor readings."""
     started = time.perf_counter()
+    contract = load_contract()
     images = _prepare_image(image)[None, ...]
     sensors = _prepare_sensors(sensor_sequence)[None, ...]
     raw = ModelSingleton.get().predict(

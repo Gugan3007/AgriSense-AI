@@ -9,3 +9,15 @@ export function uploadErrorDetails(error) {
 }
 
 export const isConclusive = (analysis) => analysis?.analysis_status === 'completed';
+
+export const CROP_OPTIONS = [
+  { value: 'Apple', label: 'Apple' },
+  { value: 'Cherry_(including_sour)', label: 'Cherry (including sour)' },
+  { value: 'Corn_(maize)', label: 'Corn (maize)' },
+  { value: 'Grape', label: 'Grape' },
+  { value: 'Peach', label: 'Peach' },
+  { value: 'Pepper,_bell', label: 'Bell pepper' },
+  { value: 'Potato', label: 'Potato' },
+  { value: 'Strawberry', label: 'Strawberry' },
+  { value: 'Tomato', label: 'Tomato' },
+];
