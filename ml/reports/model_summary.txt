@@ -46,10 +46,13 @@ Model: "agrisense_image_first_cnn_lstm"
 │ sensor_probability… │ (None, 4)         │          0 │ sensor_probabili… │
 │ (Rescaling)         │                   │            │                   │
 ├─────────────────────┼───────────────────┼────────────┼───────────────────┤
+│ crop_probabilities  │ (None, 9)         │      1,161 │ image_dropout[0]… │
+│ (Dense)             │                   │            │                   │
+├─────────────────────┼───────────────────┼────────────┼───────────────────┤
 │ stress_probabiliti… │ (None, 4)         │          0 │ image_probabilit… │
 │ (Add)               │                   │            │ sensor_probabili… │
 └─────────────────────┴───────────────────┴────────────┴───────────────────┘
- Total params: 2,442,344 (9.32 MB)
- Trainable params: 184,360 (720.16 KB)
+ Total params: 2,443,505 (9.32 MB)
+ Trainable params: 185,521 (724.69 KB)
  Non-trainable params: 2,257,984 (8.61 MB)
 

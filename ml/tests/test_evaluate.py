@@ -19,6 +19,16 @@ from evaluate import (  # noqa: E402
 
 
 class EvaluationTests(unittest.TestCase):
+    def accepted_metrics(self) -> dict:
+        return {
+            "normal": {"accuracy": .90, "f1_macro": .88, "brier_score": .20},
+            "image_only": {"f1_macro": .86},
+            "sensor_only": {"f1_macro": .50},
+            "test_class_count": 4,
+            "leaf_validation": {"false_rejection_rate": .03},
+            "negative_suite": {"all_blocked": True},
+        }
+
     def test_probability_validation_rejects_negative_values(self) -> None:
         probabilities = np.array([[1.1, -0.1, 0.0, 0.0]], dtype="float32")
 
@@ -42,14 +52,25 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(metrics["brier_score"], 0.0)
 
     def test_acceptance_requires_image_only_to_beat_sensor_only(self) -> None:
-        metrics = {
-            "normal": {"f1_macro": 0.7},
-            "image_only": {"f1_macro": 0.4},
-            "sensor_only": {"f1_macro": 0.8},
-            "test_class_count": 4,
-        }
+        metrics = self.accepted_metrics()
+        metrics["image_only"]["f1_macro"] = 0.4
+        metrics["sensor_only"]["f1_macro"] = 0.8
 
         with self.assertRaisesRegex(RuntimeError, "image-only"):
+            enforce_acceptance(metrics)
+
+    def test_acceptance_requires_accuracy_improvement(self) -> None:
+        metrics = self.accepted_metrics()
+        metrics["normal"]["accuracy"] = 0.8192090395480226
+
+        with self.assertRaisesRegex(RuntimeError, "accuracy"):
+            enforce_acceptance(metrics)
+
+    def test_acceptance_rejects_non_leaf_false_accept(self) -> None:
+        metrics = self.accepted_metrics()
+        metrics["negative_suite"]["all_blocked"] = False
+
+        with self.assertRaisesRegex(RuntimeError, "non-leaf"):
             enforce_acceptance(metrics)
 
 

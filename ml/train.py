@@ -10,9 +10,12 @@ import time
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+from PIL import Image
 
 from artifacts import build_contract, load_contract, promote_bundle
+from calibration import fit_decision_policy, fit_leaf_reference, quality_metrics
 from model import build_models, compile_model, configure_fine_tuning, save_model_summary
 from preprocessing import add_auxiliary_targets, prepare_datasets
 from utils import (
@@ -20,6 +23,58 @@ from utils import (
     STAGED_MODEL_PATH, TENSORBOARD_DIR, ensure_directories, require_tensorflow,
     set_reproducible_seed, utc_now, write_json,
 )
+
+
+def _fit_calibration(tf, inference_model, data):
+    embedding_model = tf.keras.Model(
+        inference_model.inputs,
+        inference_model.get_layer("cnn_global_pool").output,
+    )
+    embeddings, crops, quality_rows = [], [], []
+    for inputs, targets in data.train:
+        images = np.asarray(inputs["image"])
+        embeddings.append(np.asarray(embedding_model.predict_on_batch(inputs)))
+        crops.append(np.argmax(np.asarray(targets["crop"]), axis=1))
+        quality_rows.extend(quality_metrics(image) for image in images)
+
+    rng = np.random.default_rng(42)
+    negative_images = [
+        np.zeros((128, 128, 3), dtype="float32"),
+        np.ones((128, 128, 3), dtype="float32"),
+        rng.random((128, 128, 3), dtype="float32"),
+        np.indices((128, 128)).sum(axis=0)[..., None].repeat(3, axis=2) % 2,
+    ]
+    concept_path = REPORTS_DIR.parents[1] / "frontend" / "src" / "assets" / "agrisense-ui-concept.png"
+    with Image.open(concept_path) as image:
+        negative_images.append(
+            np.asarray(image.convert("RGB").resize((128, 128)), dtype="float32") / 255.0
+        )
+    negative_batch = np.asarray(negative_images, dtype="float32")
+    sensor_batch = np.zeros((len(negative_batch), data.statistics["sequence_length"], 4), dtype="float32")
+    negative_embeddings = embedding_model.predict(
+        {"image": negative_batch, "sensor_sequence": sensor_batch}, verbose=0
+    )
+    true_rows, probability_rows = [], []
+    calibration_embeddings, calibration_quality_rows = [], []
+    for inputs, targets in data.validation:
+        raw = inference_model.predict_on_batch(inputs)
+        probability_rows.append(np.asarray(raw["stress_probabilities"]))
+        true_rows.append(np.argmax(np.asarray(targets["stress"]), axis=1))
+        images = np.asarray(inputs["image"])
+        calibration_embeddings.append(
+            np.asarray(embedding_model.predict_on_batch(inputs))
+        )
+        calibration_quality_rows.extend(quality_metrics(image) for image in images)
+    reference = fit_leaf_reference(
+        np.concatenate(embeddings), np.concatenate(crops), quality_rows,
+        negative_embeddings, data.crop_labels,
+        calibration_embeddings=np.concatenate(calibration_embeddings),
+        calibration_quality_rows=calibration_quality_rows,
+    )
+    policy = fit_decision_policy(
+        np.concatenate(true_rows), np.concatenate(probability_rows), min_coverage=0.70
+    )
+    return reference, policy
 
 
 def plot_history(history: dict[str, list[float]]) -> None:
@@ -113,7 +168,11 @@ def train(
     frame.index.name = "epoch"
     frame.to_csv(REPORTS_DIR / "training_history.csv")
     plot_history(history_values)
-    contract = build_contract(data.statistics)
+    if qa_only:
+        contract = build_contract(data.statistics)
+    else:
+        leaf_reference, decision_policy = _fit_calibration(tf, inference_model, data)
+        contract = build_contract(data.statistics, leaf_reference, decision_policy)
     STAGED_MODEL_PATH.unlink(missing_ok=True)
     STAGED_CONTRACT_PATH.unlink(missing_ok=True)
     inference_model.save(STAGED_MODEL_PATH)
@@ -144,7 +203,7 @@ def train(
     promote_bundle(STAGED_MODEL_PATH, STAGED_CONTRACT_PATH, MODEL_PATH, MODEL_CONTRACT_PATH)
     metadata = {
         "model_name": inference_model.name,
-        "architecture": "MobileNetV2 image encoder + sensor LSTM + image-first probability fusion",
+        "architecture": "Fine-tuned MobileNetV2 image encoder with crop evidence + sensor LSTM + calibrated image-first probability fusion",
         "class_labels": CLASS_LABELS,
         "input_shapes": {"image": [128, 128, 3], "sensor_sequence": [sequence_length, 4]},
         "hyperparameters": {"learning_rate": 0.001, "fine_tune_learning_rate": 1e-5, "batch_size": batch_size, "requested_epochs": epochs, "requested_fine_tune_epochs": fine_tune_epochs, "completed_epochs": len(frame), "sequence_length": sequence_length, "optimizer": "Adam", "loss": "multi_output_categorical_crossentropy", "class_weights": class_weights, "image_probability_weight": 0.8, "sensor_probability_weight": 0.2, "fine_tuned_layers": opened_layers},

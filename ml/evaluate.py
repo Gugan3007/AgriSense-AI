@@ -11,6 +11,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from PIL import Image
 from sklearn.metrics import (
     accuracy_score, classification_report, confusion_matrix, f1_score,
     precision_score, recall_score, roc_curve, auc,
@@ -18,7 +19,8 @@ from sklearn.metrics import (
 from sklearn.preprocessing import label_binarize
 
 from artifacts import load_contract
-from preprocessing import prepare_datasets
+from calibration import classify_reliability, leaf_similarity, quality_metrics
+from preprocessing import CROP_LABELS, prepare_datasets
 from utils import (
     CLASS_LABELS, MODEL_CONTRACT_PATH, MODEL_PATH, REPORTS_DIR, ensure_directories,
     require_tensorflow, write_json,
@@ -28,8 +30,11 @@ from utils import (
 def collect_predictions(model, dataset):
     true_batches, probability_batches = [], []
     for inputs, targets in dataset:
-        probability_batches.append(model.predict_on_batch(inputs))
-        true_batches.append(np.argmax(targets.numpy(), axis=1))
+        raw = model.predict_on_batch(inputs)
+        probabilities = raw["stress_probabilities"] if isinstance(raw, dict) else raw
+        probability_batches.append(probabilities)
+        stress_targets = targets["stress"] if isinstance(targets, dict) else targets
+        true_batches.append(np.argmax(stress_targets.numpy(), axis=1))
     y_true = np.concatenate(true_batches)
     probabilities = np.concatenate(probability_batches)
     return y_true, probabilities, np.argmax(probabilities, axis=1)
@@ -68,15 +73,29 @@ def evaluate_predictions(y_true: np.ndarray, probabilities: np.ndarray) -> dict:
 
 
 def enforce_acceptance(metrics: dict) -> None:
+    failures = []
     if metrics.get("test_class_count") != len(CLASS_LABELS):
-        raise RuntimeError("Model acceptance failed: test data does not contain all four classes")
+        failures.append("test data does not contain all four classes")
+    normal = metrics["normal"]
+    if float(normal["accuracy"]) <= 0.8192090395480226:
+        failures.append("accuracy did not beat baseline")
+    if float(normal["f1_macro"]) <= 0.7901860901925868:
+        failures.append("macro-F1 did not beat baseline")
+    if float(normal["brier_score"]) > 0.2740994393825531:
+        failures.append("Brier score regressed")
     image_f1 = float(metrics["image_only"]["f1_macro"])
     sensor_f1 = float(metrics["sensor_only"]["f1_macro"])
     if image_f1 <= sensor_f1:
-        raise RuntimeError(
-            "Model acceptance failed: image-only macro F1 must exceed sensor-only macro F1 "
+        failures.append(
+            "image-only macro F1 must exceed sensor-only macro F1 "
             f"({image_f1:.4f} <= {sensor_f1:.4f})"
         )
+    if float(metrics["leaf_validation"]["false_rejection_rate"]) > 0.05:
+        failures.append("leaf false rejection exceeds 5%")
+    if not metrics["negative_suite"]["all_blocked"]:
+        failures.append("non-leaf suite was not fully blocked")
+    if failures:
+        raise RuntimeError("Model acceptance failed: " + "; ".join(failures))
 
 
 def _counterfactual_probabilities(model, dataset, modality: str) -> np.ndarray:
@@ -84,8 +103,67 @@ def _counterfactual_probabilities(model, dataset, modality: str) -> np.ndarray:
     for inputs, _ in dataset:
         changed = {name: np.asarray(value) for name, value in inputs.items()}
         changed[modality] = np.roll(changed[modality], shift=1, axis=0)
-        batches.append(np.asarray(model.predict_on_batch(changed), dtype="float32"))
+        raw = model.predict_on_batch(changed)
+        probabilities = raw["stress_probabilities"] if isinstance(raw, dict) else raw
+        batches.append(np.asarray(probabilities, dtype="float32"))
     return np.concatenate(batches)
+
+
+def _passes_leaf_gate(image: np.ndarray, embedding: np.ndarray, reference: dict) -> bool:
+    metrics = quality_metrics(image)
+    quality = reference["quality"]
+    quality_ok = (
+        metrics["brightness"] >= quality["min_brightness"]
+        and metrics["brightness"] <= quality["max_brightness"]
+        and metrics["contrast"] >= quality["min_contrast"]
+        and metrics["sharpness"] >= quality["min_sharpness"]
+        and metrics["dark_clip"] <= quality["max_dark_clip"]
+        and metrics["bright_clip"] <= quality["max_bright_clip"]
+    )
+    similarity, _ = leaf_similarity(embedding, reference)
+    return bool(quality_ok and similarity >= reference["accept_threshold"])
+
+
+def _validation_metrics(tf, model, dataset, contract: dict) -> tuple[dict, dict, dict]:
+    reference = contract["leaf_validation"]
+    embedding_model = tf.keras.Model(model.inputs, model.get_layer("cnn_global_pool").output)
+    leaf_results, crop_true, crop_pred = [], [], []
+    for inputs, targets in dataset:
+        embeddings = np.asarray(embedding_model.predict_on_batch(inputs))
+        raw = model.predict_on_batch(inputs)
+        crop_probabilities = np.asarray(raw["crop_probabilities"])
+        images = np.asarray(inputs["image"])
+        leaf_results.extend(
+            _passes_leaf_gate(image, embedding, reference)
+            for image, embedding in zip(images, embeddings)
+        )
+        crop_true.extend(np.argmax(np.asarray(targets["crop"]), axis=1))
+        crop_pred.extend(np.argmax(crop_probabilities, axis=1))
+
+    rng = np.random.default_rng(42)
+    negatives = [
+        np.zeros((128, 128, 3), dtype="float32"),
+        np.ones((128, 128, 3), dtype="float32"),
+        rng.random((128, 128, 3), dtype="float32"),
+        (np.indices((128, 128)).sum(axis=0)[..., None].repeat(3, axis=2) % 2).astype("float32"),
+    ]
+    concept_path = REPORTS_DIR.parents[1] / "frontend" / "src" / "assets" / "agrisense-ui-concept.png"
+    with Image.open(concept_path) as image:
+        negatives.append(np.asarray(image.convert("RGB").resize((128, 128)), dtype="float32") / 255.0)
+    negative_images = np.asarray(negatives)
+    negative_sensors = np.zeros((len(negatives), contract["sequence_length"], 4), dtype="float32")
+    negative_embeddings = embedding_model.predict(
+        {"image": negative_images, "sensor_sequence": negative_sensors}, verbose=0
+    )
+    blocked = [
+        not _passes_leaf_gate(image, embedding, reference)
+        for image, embedding in zip(negative_images, negative_embeddings)
+    ]
+    return (
+        {"false_rejection_rate": float(1.0 - np.mean(leaf_results)), "samples": len(leaf_results)},
+        {"blocked": int(sum(blocked)), "samples": len(blocked), "all_blocked": bool(all(blocked))},
+        {"accuracy": float(accuracy_score(crop_true, crop_pred)), "samples": len(crop_true), "class_count": len(set(crop_true))},
+    )
 
 
 def plot_confusion(y_true, y_pred) -> None:
@@ -169,6 +247,27 @@ def evaluate_model(
             ),
         },
     }
+    if contract.get("schema_version") == 2:
+        leaf_metrics, negative_metrics, crop_metrics = _validation_metrics(
+            tf, model, data.test, contract
+        )
+        decisions = [
+            classify_reliability(row, contract["decision_policy"])
+            for row in probabilities
+        ]
+        selected = np.asarray([item["analysis_status"] == "completed" for item in decisions])
+        selective = {
+            "coverage": float(selected.mean()),
+            "samples": int(selected.sum()),
+        }
+        if selected.any():
+            selective.update(evaluate_predictions(y_true[selected], probabilities[selected]))
+        metrics.update({
+            "leaf_validation": leaf_metrics,
+            "negative_suite": negative_metrics,
+            "crop": crop_metrics,
+            "selective": selective,
+        })
     if enforce_model_acceptance:
         enforce_acceptance(metrics)
 

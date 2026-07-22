@@ -47,6 +47,44 @@ class CalibrationTests(unittest.TestCase):
             reference["retry_threshold"],
         )
 
+    def test_leaf_reference_uses_clean_calibration_rows_for_acceptance_bounds(self) -> None:
+        training_qualities = [
+            {"brightness": .5, "contrast": .2, "sharpness": .1, "dark_clip": 0., "bright_clip": 0.}
+            for _ in range(4)
+        ]
+        calibration_embeddings = np.array(
+            [[1., 0.], [.8, .6], [0., 1.], [.6, .8]], dtype="float32"
+        )
+        calibration_qualities = [
+            {"brightness": .2, "contrast": .1, "sharpness": .05, "dark_clip": .1, "bright_clip": .02},
+            {"brightness": .8, "contrast": .3, "sharpness": .20, "dark_clip": .0, "bright_clip": .00},
+            {"brightness": .3, "contrast": .2, "sharpness": .10, "dark_clip": .0, "bright_clip": .01},
+            {"brightness": .7, "contrast": .2, "sharpness": .15, "dark_clip": .0, "bright_clip": .00},
+        ]
+
+        reference = fit_leaf_reference(
+            np.array([[1., 0.], [.98, .02], [0., 1.], [.02, .98]]),
+            np.array([0, 0, 1, 1]),
+            training_qualities,
+            np.array([[-1., 0.], [0., -1.]]),
+            ["Apple", "Tomato"],
+            calibration_embeddings=calibration_embeddings,
+            calibration_quality_rows=calibration_qualities,
+        )
+
+        centroids = np.asarray(reference["centroids"])
+        calibration_scores = np.max(
+            calibration_embeddings
+            / np.linalg.norm(calibration_embeddings, axis=1, keepdims=True)
+            @ centroids.T,
+            axis=1,
+        )
+        self.assertAlmostEqual(
+            reference["accept_threshold"],
+            float(np.quantile(calibration_scores, 0.005)),
+        )
+        self.assertLess(reference["quality"]["min_brightness"], .3)
+
     def test_reliability_abstains_on_ambiguous_probabilities(self) -> None:
         result = classify_reliability(
             np.array([.27, .26, .25, .22]),

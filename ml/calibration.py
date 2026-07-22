@@ -39,6 +39,9 @@ def fit_leaf_reference(
     quality_rows: list[dict[str, float]],
     negative_embeddings: np.ndarray,
     crop_labels: list[str],
+    *,
+    calibration_embeddings: np.ndarray | None = None,
+    calibration_quality_rows: list[dict[str, float]] | None = None,
 ) -> dict:
     values = _normalize(embeddings)
     crops = np.asarray(crop_indices, dtype="int32")
@@ -49,13 +52,23 @@ def fit_leaf_reference(
             raise ValueError(f"No calibration embeddings for crop {label}")
         centroids.append(_normalize(selected.mean(axis=0, keepdims=True))[0])
     centroid_array = np.asarray(centroids)
-    positive_scores = np.max(values @ centroid_array.T, axis=1)
+    calibration_values = _normalize(
+        embeddings if calibration_embeddings is None else calibration_embeddings
+    )
+    positive_scores = np.max(calibration_values @ centroid_array.T, axis=1)
     negative_values = _normalize(negative_embeddings)
     negative_scores = np.max(negative_values @ centroid_array.T, axis=1)
-    accept_threshold = float(np.quantile(positive_scores, 0.05))
-    retry_threshold = float(min(accept_threshold - 1e-4, negative_scores.max() + 0.02))
+    negative_max = float(negative_scores.max())
+    accept_threshold = float(min(1.0, max(np.quantile(positive_scores, 0.005), negative_max + 0.03)))
+    retry_threshold = float(min(accept_threshold - 0.01, negative_max + 0.01))
     metric_names = ("brightness", "contrast", "sharpness", "dark_clip", "bright_clip")
-    quality = {name: np.asarray([row[name] for row in quality_rows]) for name in metric_names}
+    boundary_quality_rows = (
+        quality_rows if calibration_quality_rows is None else calibration_quality_rows
+    )
+    quality = {
+        name: np.asarray([row[name] for row in boundary_quality_rows])
+        for name in metric_names
+    }
     return {
         "version": 1,
         "crop_labels": list(crop_labels),
@@ -63,12 +76,12 @@ def fit_leaf_reference(
         "accept_threshold": accept_threshold,
         "retry_threshold": retry_threshold,
         "quality": {
-            "min_brightness": float(np.quantile(quality["brightness"], 0.01)),
-            "max_brightness": float(np.quantile(quality["brightness"], 0.99)),
-            "min_contrast": float(np.quantile(quality["contrast"], 0.01)),
-            "min_sharpness": float(np.quantile(quality["sharpness"], 0.01)),
-            "max_dark_clip": float(np.quantile(quality["dark_clip"], 0.99)),
-            "max_bright_clip": float(np.quantile(quality["bright_clip"], 0.99)),
+            "min_brightness": float(np.quantile(quality["brightness"], 0.001)),
+            "max_brightness": float(np.quantile(quality["brightness"], 0.999)),
+            "min_contrast": float(np.quantile(quality["contrast"], 0.001)),
+            "min_sharpness": float(np.quantile(quality["sharpness"], 0.001)),
+            "max_dark_clip": float(np.quantile(quality["dark_clip"], 0.999)),
+            "max_bright_clip": float(np.quantile(quality["bright_clip"], 0.999)),
         },
     }
 
