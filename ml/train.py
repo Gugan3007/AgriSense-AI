@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from artifacts import build_contract, load_contract, promote_bundle
-from model import build_models, compile_model, save_model_summary
+from model import build_models, compile_model, configure_fine_tuning, save_model_summary
 from preprocessing import add_auxiliary_targets, prepare_datasets
 from utils import (
     CLASS_LABELS, MODEL_CONTRACT_PATH, MODEL_PATH, REPORTS_DIR, STAGED_CONTRACT_PATH,
@@ -45,6 +45,7 @@ def _balanced_class_weights(distribution: dict[str, int]) -> list[float]:
 
 def train(
     epochs: int = 18,
+    fine_tune_epochs: int = 8,
     batch_size: int = 16,
     sequence_length: int = 7,
     max_steps=None,
@@ -65,7 +66,7 @@ def train(
     class_weights = _balanced_class_weights(data.statistics["label_distribution"]["train"])
     train_dataset = add_auxiliary_targets(data.train, class_weights)
     validation_dataset = add_auxiliary_targets(data.validation)
-    callbacks = [
+    warmup_callbacks = [
         tf.keras.callbacks.EarlyStopping(
             monitor="val_stress_probabilities_loss", mode="min", patience=4,
             restore_best_weights=True,
@@ -77,15 +78,41 @@ def train(
         tf.keras.callbacks.TensorBoard(log_dir=str(TENSORBOARD_DIR), histogram_freq=0),
     ]
     started = time.perf_counter()
-    history = training_model.fit(
-        train_dataset, validation_data=validation_dataset, epochs=epochs, callbacks=callbacks,
+    warmup = training_model.fit(
+        train_dataset, validation_data=validation_dataset, epochs=epochs, callbacks=warmup_callbacks,
         verbose=1, steps_per_epoch=max_steps, validation_steps=max_steps, shuffle=False,
     )
+    opened_layers = configure_fine_tuning(training_model, unfreeze_last=20)
+    compile_model(training_model, learning_rate=1e-5)
+    fine_tune_callbacks = [
+        tf.keras.callbacks.EarlyStopping(
+            monitor="val_stress_probabilities_macro_f1", mode="max", patience=4,
+            restore_best_weights=True,
+        ),
+        tf.keras.callbacks.ReduceLROnPlateau(
+            monitor="val_stress_probabilities_macro_f1", mode="max", factor=0.5,
+            patience=2, min_lr=1e-7,
+        ),
+    ]
+    fine_tune = training_model.fit(
+        train_dataset,
+        validation_data=validation_dataset,
+        epochs=fine_tune_epochs,
+        callbacks=fine_tune_callbacks,
+        verbose=1,
+        steps_per_epoch=max_steps,
+        validation_steps=max_steps,
+        shuffle=False,
+    )
     elapsed = time.perf_counter() - started
-    frame = pd.DataFrame(history.history)
+    history_values = {
+        key: list(warmup.history.get(key, [])) + list(fine_tune.history.get(key, []))
+        for key in set(warmup.history) | set(fine_tune.history)
+    }
+    frame = pd.DataFrame(history_values)
     frame.index.name = "epoch"
     frame.to_csv(REPORTS_DIR / "training_history.csv")
-    plot_history(history.history)
+    plot_history(history_values)
     contract = build_contract(data.statistics)
     STAGED_MODEL_PATH.unlink(missing_ok=True)
     STAGED_CONTRACT_PATH.unlink(missing_ok=True)
@@ -101,6 +128,7 @@ def train(
             "qa_only": True,
             "completed_epochs": len(frame),
             "class_weights": class_weights,
+            "fine_tuned_layers": opened_layers,
         }
 
     from evaluate import evaluate_model
@@ -119,7 +147,7 @@ def train(
         "architecture": "MobileNetV2 image encoder + sensor LSTM + image-first probability fusion",
         "class_labels": CLASS_LABELS,
         "input_shapes": {"image": [128, 128, 3], "sensor_sequence": [sequence_length, 4]},
-        "hyperparameters": {"learning_rate": 0.001, "batch_size": batch_size, "requested_epochs": epochs, "completed_epochs": len(frame), "sequence_length": sequence_length, "optimizer": "Adam", "loss": "multi_output_categorical_crossentropy", "class_weights": class_weights, "image_probability_weight": 0.8, "sensor_probability_weight": 0.2},
+        "hyperparameters": {"learning_rate": 0.001, "fine_tune_learning_rate": 1e-5, "batch_size": batch_size, "requested_epochs": epochs, "requested_fine_tune_epochs": fine_tune_epochs, "completed_epochs": len(frame), "sequence_length": sequence_length, "optimizer": "Adam", "loss": "multi_output_categorical_crossentropy", "class_weights": class_weights, "image_probability_weight": 0.8, "sensor_probability_weight": 0.2, "fine_tuned_layers": opened_layers},
         "training_date": utc_now(),
         "training_seconds": round(elapsed, 2),
         "compute_device": "GPU" if devices else "CPU",
@@ -138,9 +166,10 @@ def train(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=18)
+    parser.add_argument("--fine-tune-epochs", type=int, default=8)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--sequence-length", type=int, default=7)
     parser.add_argument("--max-steps", type=int, default=None, help="QA-only limit per epoch")
     parser.add_argument("--qa-only", action="store_true", help="Validate one staged run without promotion")
     args = parser.parse_args()
-    print(json.dumps(train(args.epochs, args.batch_size, args.sequence_length, args.max_steps, args.qa_only), indent=2))
+    print(json.dumps(train(args.epochs, args.fine_tune_epochs, args.batch_size, args.sequence_length, args.max_steps, args.qa_only), indent=2))

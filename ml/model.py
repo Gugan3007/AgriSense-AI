@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from preprocessing import CROP_LABELS
 from utils import CLASS_LABELS, DEFAULT_SEQUENCE_LENGTH, IMAGE_SIZE, REPORTS_DIR, ensure_directories, require_tensorflow
 
 
@@ -49,7 +50,10 @@ def compile_model(model, learning_rate: float = 1e-3):
     tf = require_tensorflow()
     losses = {
         name: tf.keras.losses.CategoricalCrossentropy()
-        for name in ("stress_probabilities", "image_probabilities", "sensor_probabilities")
+        for name in (
+            "stress_probabilities", "image_probabilities",
+            "sensor_probabilities", "crop_probabilities",
+        )
     }
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
@@ -58,6 +62,7 @@ def compile_model(model, learning_rate: float = 1e-3):
             "stress_probabilities": 1.0,
             "image_probabilities": 0.5,
             "sensor_probabilities": 0.1,
+            "crop_probabilities": 0.2,
         },
         metrics={
             "stress_probabilities": [
@@ -68,6 +73,9 @@ def compile_model(model, learning_rate: float = 1e-3):
                 tf.keras.metrics.CategoricalAccuracy(name="accuracy"),
             ],
             "sensor_probabilities": [
+                tf.keras.metrics.CategoricalAccuracy(name="accuracy"),
+            ],
+            "crop_probabilities": [
                 tf.keras.metrics.CategoricalAccuracy(name="accuracy"),
             ],
         },
@@ -107,6 +115,9 @@ def build_models(
     image_probabilities = layers.Dense(
         len(CLASS_LABELS), activation="softmax", name="image_probabilities"
     )(image_features)
+    crop_probabilities = layers.Dense(
+        len(CROP_LABELS), activation="softmax", name="crop_probabilities"
+    )(image_features)
 
     noisy_sensors = layers.GaussianNoise(0.15, name="sensor_noise")(sensor_input)
     sensor_features = layers.LSTM(lstm_units, name="sensor_lstm")(noisy_sensors)
@@ -133,13 +144,36 @@ def build_models(
             "stress_probabilities": stress_probabilities,
             "image_probabilities": image_probabilities,
             "sensor_probabilities": sensor_probabilities,
+            "crop_probabilities": crop_probabilities,
         },
         name="agrisense_training_model",
     )
     inference_model = tf.keras.Model(
-        inputs, stress_probabilities, name="agrisense_image_first_cnn_lstm"
+        inputs,
+        {
+            "stress_probabilities": stress_probabilities,
+            "crop_probabilities": crop_probabilities,
+        },
+        name="agrisense_image_first_cnn_lstm",
     )
     return training_model, inference_model
+
+
+def configure_fine_tuning(model, unfreeze_last: int = 20) -> list[str]:
+    """Open only the encoder tail while keeping BatchNorm layers frozen."""
+    tf = require_tensorflow()
+    encoder = model.get_layer("image_encoder")
+    encoder.trainable = True
+    cutoff = max(0, len(encoder.layers) - unfreeze_last)
+    opened: list[str] = []
+    for index, layer in enumerate(encoder.layers):
+        layer.trainable = (
+            index >= cutoff
+            and not isinstance(layer, tf.keras.layers.BatchNormalization)
+        )
+        if layer.trainable:
+            opened.append(layer.name)
+    return opened
 
 
 def build_model(
