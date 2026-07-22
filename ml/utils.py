@@ -18,6 +18,9 @@ REPORTS_DIR = ML_DIR / "reports"
 SAVED_MODEL_DIR = ML_DIR / "saved_model"
 TENSORBOARD_DIR = ML_DIR / "tensorboard_logs"
 MODEL_PATH = SAVED_MODEL_DIR / "agrisense_cnn_lstm.keras"
+MODEL_CONTRACT_PATH = SAVED_MODEL_DIR / "preprocessing.json"
+STAGED_MODEL_PATH = SAVED_MODEL_DIR / "agrisense_cnn_lstm.staging.keras"
+STAGED_CONTRACT_PATH = SAVED_MODEL_DIR / "preprocessing.staging.json"
 CLASS_LABELS = ["Healthy", "Low", "Medium", "High"]
 SENSOR_COLUMNS = ["Soil_Moisture", "Temperature", "Humidity", "Light_Intensity"]
 IMAGE_SIZE = (128, 128)
@@ -59,4 +62,3 @@ def require_tensorflow():
             "python3 -m pip install -r ml/requirements.txt"
         ) from exc
     return tf
-
