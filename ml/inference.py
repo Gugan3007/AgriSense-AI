@@ -81,9 +81,15 @@ def predict_stress(image, sensor_sequence) -> dict:
     started = time.perf_counter()
     images = _prepare_image(image)[None, ...]
     sensors = _prepare_sensors(sensor_sequence)[None, ...]
-    probabilities = ModelSingleton.get().predict(
+    raw = ModelSingleton.get().predict(
         {"image": images, "sensor_sequence": sensors}, verbose=0
-    )[0]
+    )
+    if isinstance(raw, dict):
+        probabilities = np.asarray(raw["stress_probabilities"][0], dtype="float32")
+        crop_values = np.asarray(raw["crop_probabilities"][0], dtype="float32")
+    else:
+        probabilities = np.asarray(raw[0], dtype="float32")
+        crop_values = np.asarray([], dtype="float32")
     if not np.isfinite(probabilities).all() or np.any(probabilities < 0) or np.any(probabilities > 1):
         raise ValueError("Model returned invalid class probabilities")
     if not np.isclose(float(probabilities.sum()), 1.0, atol=1e-5):
@@ -97,6 +103,12 @@ def predict_stress(image, sensor_sequence) -> dict:
         "confidence": float(probabilities[index]),
         "class_probabilities": {
             label: float(probabilities[i]) for i, label in enumerate(CLASS_LABELS)
+        },
+        "probability_array": probabilities.tolist(),
+        "crop_probabilities": {
+            label: float(crop_values[i])
+            for i, label in enumerate(contract.get("crop_labels", []))
+            if i < len(crop_values)
         },
         "timestamp": utc_now(),
         "latency_ms": latency_ms,

@@ -238,6 +238,8 @@ class InferenceService:
             "predicted_class": result["predicted_class"],
             "confidence": result["confidence"],
             "class_probabilities": result["class_probabilities"],
+            "probability_array": result["probability_array"],
+            "crop_probabilities": result["crop_probabilities"],
             "cnn_feature_summary": feature_summary,
             "lstm_trend": trend,
             "prediction_time_ms": total_ms,

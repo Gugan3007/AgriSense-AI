@@ -72,6 +72,7 @@ def save_upload(image_file: FileStorage, sensor_csv: FileStorage | None = None) 
         image_url=f"/static/uploads/{filename}",
         content_type="image/jpeg",
         sensor_csv_path=sensor_csv_path,
+        validation_result=validation,
     )
     db.session.add(record)
     db.session.commit()

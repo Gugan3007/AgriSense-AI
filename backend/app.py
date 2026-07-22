@@ -17,6 +17,7 @@ from routes.history import history_bp
 from routes.model_info import model_info_bp
 from routes.predict import predict_bp
 from routes.upload import upload_bp
+from services.schema_service import ensure_schema_compatibility
 
 
 def create_app() -> Flask:
@@ -35,6 +36,7 @@ def create_app() -> Flask:
 
     with app.app_context():
         db.create_all()
+        ensure_schema_compatibility(db.engine)
 
     @app.get("/")
     def root():

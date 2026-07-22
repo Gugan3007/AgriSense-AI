@@ -31,6 +31,7 @@ class UploadedImage(db.Model):
     image_url = db.Column(db.String(500), nullable=False)
     content_type = db.Column(db.String(120), nullable=False)
     sensor_csv_path = db.Column(db.String(500), nullable=True)
+    validation_result = db.Column(db.JSON, nullable=True)
     received_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
 
     predictions = db.relationship("Prediction", back_populates="upload", lazy=True)
@@ -43,6 +44,7 @@ class UploadedImage(db.Model):
             "image_url": self.image_url,
             "received_at": isoformat_utc(self.received_at),
             "has_sensor_csv": bool(self.sensor_csv_path),
+            "image_validation": self.validation_result,
         }
 
 
@@ -61,6 +63,12 @@ class Prediction(db.Model):
     sequence_adjustment = db.Column(db.JSON, nullable=False)
     prediction_time_ms = db.Column(db.Float, nullable=False)
     timestamp = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
+    analysis_status = db.Column(db.String(32), nullable=True, default="completed")
+    reliability = db.Column(db.JSON, nullable=True)
+    image_validation = db.Column(db.JSON, nullable=True)
+    crop_consistency = db.Column(db.JSON, nullable=True)
+    observations = db.Column(db.JSON, nullable=True)
+    recommendations = db.Column(db.JSON, nullable=True)
 
     upload = db.relationship("UploadedImage", back_populates="predictions")
 
@@ -79,6 +87,12 @@ class Prediction(db.Model):
             "sequence_adjustment": self.sequence_adjustment,
             "prediction_time_ms": self.prediction_time_ms,
             "timestamp": isoformat_utc(self.timestamp),
+            "analysis_status": self.analysis_status or "completed",
+            "reliability": self.reliability or {},
+            "image_validation": self.image_validation or {},
+            "crop_consistency": self.crop_consistency or {},
+            "observations": self.observations or [],
+            "recommendations": self.recommendations or [],
         }
 
 
