@@ -24,6 +24,17 @@ TRAINING_OUTPUT_NAMES = (
     "image_probabilities",
     "sensor_probabilities",
 )
+CROP_LABELS = [
+    "Apple",
+    "Cherry_(including_sour)",
+    "Corn_(maize)",
+    "Grape",
+    "Peach",
+    "Pepper,_bell",
+    "Potato",
+    "Strawberry",
+    "Tomato",
+]
 
 
 @dataclass
@@ -34,13 +45,17 @@ class PreparedData:
     statistics: dict
     split_plant_ids: dict[str, list[str]]
     sensor_normalization: dict[str, list[float]]
+    crop_labels: list[str]
 
 
 def load_valid_rows(csv_path: Path = DATASET_CSV) -> pd.DataFrame:
     if not csv_path.is_file():
         raise FileNotFoundError(f"Sequential dataset not found: {csv_path}")
     frame = pd.read_csv(csv_path, parse_dates=["Timestamp"])
-    required = {"Plant_ID", "Image_Path", "Timestamp", "Stress_Level", *SENSOR_COLUMNS}
+    required = {
+        "Plant_ID", "Image_Path", "Timestamp", "Plant_Type", "Stress_Level",
+        *SENSOR_COLUMNS,
+    }
     missing_columns = required - set(frame.columns)
     if missing_columns:
         raise ValueError(f"CSV is missing required columns: {sorted(missing_columns)}")
@@ -127,11 +142,12 @@ def make_windows(
     plant_ids: list[str],
     sequence_length: int,
     normalization: dict[str, list[float]],
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    paths, sensors, labels = [], [], []
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    paths, sensors, labels, crops = [], [], [], []
     mean = np.asarray(normalization["mean"], dtype="float32")
     std = np.asarray(normalization["std"], dtype="float32")
     label_to_index = {label: index for index, label in enumerate(CLASS_LABELS)}
+    crop_to_index = {label: index for index, label in enumerate(CROP_LABELS)}
     selected = frame[frame["Plant_ID"].isin(plant_ids)]
     for _, group in selected.groupby("Plant_ID", sort=True):
         group = group.sort_values("Timestamp")
@@ -141,16 +157,18 @@ def make_windows(
             raw_sensors = window[SENSOR_COLUMNS].to_numpy(dtype="float32")
             sensors.append((raw_sensors - mean) / std)
             labels.append(label_to_index[str(window.iloc[-1]["Stress_Level"])])
+            crops.append(crop_to_index[str(window.iloc[-1]["Plant_Type"])])
     if not paths:
         raise ValueError(f"No windows of length {sequence_length} could be created")
     return (
         np.asarray(paths, dtype=str),
         np.asarray(sensors, dtype="float32"),
         np.asarray(labels, dtype="int32"),
+        np.asarray(crops, dtype="int32"),
     )
 
 
-def _decode_sample(path, sensor_sequence, label, augmenter=None):
+def _decode_sample(path, sensor_sequence, stress_label, crop_label, augmenter=None):
     tf = require_tensorflow()
 
     def decode(path):
@@ -165,11 +183,14 @@ def _decode_sample(path, sensor_sequence, label, augmenter=None):
         # All randomness is confined to the training pipeline.
         image = augmenter(image, training=True)
         image = tf.clip_by_value(image, 0.0, 1.0)
-    target = tf.one_hot(label, depth=len(CLASS_LABELS))
-    return {"image": image, "sensor_sequence": sensor_sequence}, target
+    targets = {
+        "stress": tf.one_hot(stress_label, depth=len(CLASS_LABELS)),
+        "crop": tf.one_hot(crop_label, depth=len(CROP_LABELS)),
+    }
+    return {"image": image, "sensor_sequence": sensor_sequence}, targets
 
 
-def build_tf_dataset(paths, sensors, labels, batch_size: int, training: bool):
+def build_tf_dataset(paths, sensors, labels, crops, batch_size: int, training: bool):
     tf = require_tensorflow()
     augmenter = None
     if training:
@@ -182,11 +203,11 @@ def build_tf_dataset(paths, sensors, labels, batch_size: int, training: bool):
             ],
             name="training_image_augmentation",
         )
-    dataset = tf.data.Dataset.from_tensor_slices((paths, sensors, labels))
+    dataset = tf.data.Dataset.from_tensor_slices((paths, sensors, labels, crops))
     if training:
         dataset = dataset.shuffle(len(labels), seed=SEED, reshuffle_each_iteration=True)
     dataset = dataset.map(
-        lambda p, s, y: _decode_sample(p, s, y, augmenter),
+        lambda p, s, y, c: _decode_sample(p, s, y, c, augmenter),
         num_parallel_calls=tf.data.AUTOTUNE,
         deterministic=not training,
     )
@@ -199,12 +220,16 @@ def add_auxiliary_targets(dataset, class_weights: list[float] | None = None):
     weights = tf.constant(class_weights, dtype=tf.float32) if class_weights is not None else None
 
     def map_targets(inputs, target):
-        targets = {name: target for name in TRAINING_OUTPUT_NAMES}
+        stress_target = target["stress"]
+        targets = {name: stress_target for name in TRAINING_OUTPUT_NAMES}
+        targets["crop_probabilities"] = target["crop"]
         if weights is None:
             return inputs, targets
-        label = tf.argmax(target, axis=-1, output_type=tf.int32)
+        label = tf.argmax(stress_target, axis=-1, output_type=tf.int32)
         sample_weight = tf.gather(weights, label)
-        return inputs, targets, {name: sample_weight for name in TRAINING_OUTPUT_NAMES}
+        output_weights = {name: sample_weight for name in TRAINING_OUTPUT_NAMES}
+        output_weights["crop_probabilities"] = tf.ones_like(sample_weight)
+        return inputs, targets, output_weights
 
     return dataset.map(map_targets, num_parallel_calls=tf.data.AUTOTUNE)
 
@@ -236,6 +261,7 @@ def prepare_datasets(
         "sequence_length": sequence_length,
         "sensor_columns": SENSOR_COLUMNS,
         "class_labels": CLASS_LABELS,
+        "crop_labels": CROP_LABELS,
         "split_by": "Plant_ID",
         "plant_counts": {name: len(ids) for name, ids in splits.items()},
         "window_counts": {name: int(len(values[2])) for name, values in arrays.items()},
@@ -255,6 +281,7 @@ def prepare_datasets(
     return PreparedData(
         train=datasets["train"], validation=datasets["validation"], test=datasets["test"],
         statistics=stats, split_plant_ids=splits, sensor_normalization=normalization,
+        crop_labels=CROP_LABELS,
     )
 
 

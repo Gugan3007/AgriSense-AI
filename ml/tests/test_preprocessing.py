@@ -24,6 +24,7 @@ class PreprocessingTests(unittest.TestCase):
                 "Plant_ID": "P1",
                 "Timestamp": pd.Timestamp("2026-01-01") + pd.Timedelta(index, unit="D"),
                 "Resolved_Image_Path": f"/images/leaf-{index}.jpg",
+                "Plant_Type": "Tomato",
                 "Stress_Level": CLASS_LABELS[index // 2 if index < 6 else 3],
                 "Soil_Moisture": 60.0 - index,
                 "Temperature": 24.0 + index,
@@ -38,7 +39,7 @@ class PreprocessingTests(unittest.TestCase):
         }
 
     def test_make_windows_uses_only_the_current_leaf_image(self) -> None:
-        images, sensors, labels = make_windows(
+        images, sensors, labels, crops = make_windows(
             self.frame, ["P1"], sequence_length=7, normalization=self.normalization
         )
 
@@ -46,6 +47,7 @@ class PreprocessingTests(unittest.TestCase):
         self.assertEqual(images[0], "/images/leaf-6.jpg")
         self.assertEqual(sensors.shape, (1, 7, 4))
         self.assertEqual(labels.tolist(), [3])
+        self.assertEqual(crops.tolist(), [8])
 
     def test_split_integrity_rejects_source_image_overlap(self) -> None:
         frame = pd.DataFrame({
@@ -66,6 +68,12 @@ class PreprocessingTests(unittest.TestCase):
             0,
             "generated dataset must not reuse a source image",
         )
+
+    def test_checked_in_dataset_is_large_and_balanced(self) -> None:
+        frame = pd.read_csv(DATASET_CSV)
+
+        self.assertGreaterEqual(frame["Plant_ID"].nunique(), 192)
+        self.assertLess(float(frame["Stress_Level"].value_counts(normalize=True).max()), 0.45)
 
 
 if __name__ == "__main__":

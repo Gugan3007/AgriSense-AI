@@ -331,7 +331,7 @@ def build(args: argparse.Namespace) -> dict[str, object]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--raw-root", default="dataset/plantvillage_raw")
-    parser.add_argument("--plants", type=int, default=64)
+    parser.add_argument("--plants", type=int, default=192)
     parser.add_argument("--min-days", type=int, default=20)
     parser.add_argument("--max-days", type=int, default=30)
     parser.add_argument("--seed", type=int, default=SEED)

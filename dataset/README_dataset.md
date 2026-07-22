@@ -20,11 +20,11 @@ stress (not pure noise), with seeded Gaussian variation and safe physical bounds
 
 ## Generated snapshot
 
-- Virtual plants: 64
-- Plant-day rows: 1593
+- Virtual plants: 192
+- Plant-day rows: 4764
 - Sequence length: 20–30 days
 - Crops used: Apple, Cherry_(including_sour), Corn_(maize), Grape, Peach, Pepper,_bell, Potato, Strawberry, Tomato
-- Stress distribution: {"Healthy": 623, "High": 232, "Low": 215, "Medium": 523}
+- Stress distribution: {"Healthy": 1875, "High": 693, "Low": 635, "Medium": 1561}
 - Source images available: 54305
 - Reused source images: 0 (must remain zero)
 
