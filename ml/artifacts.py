@@ -16,15 +16,20 @@ from utils import (
     SENSOR_COLUMNS,
 )
 
-CONTRACT_SCHEMA_VERSION = 1
+CONTRACT_SCHEMA_VERSION = 2
+SUPPORTED_SCHEMA_VERSIONS = {1, 2}
 MODEL_INPUT_NAMES = ["image", "sensor_sequence"]
 
 
-def build_contract(statistics: dict[str, Any]) -> dict[str, Any]:
+def build_contract(
+    statistics: dict[str, Any],
+    leaf_validation: dict[str, Any] | None = None,
+    decision_policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Create the exact preprocessing contract paired with a trained model."""
     normalization = statistics["sensor_normalization"]
     contract = {
-        "schema_version": CONTRACT_SCHEMA_VERSION,
+        "schema_version": 2 if leaf_validation is not None and decision_policy is not None else 1,
         "class_labels": list(CLASS_LABELS),
         "sensor_columns": list(normalization["columns"]),
         "sensor_mean": list(normalization["mean"]),
@@ -33,6 +38,12 @@ def build_contract(statistics: dict[str, Any]) -> dict[str, Any]:
         "sequence_length": int(statistics["sequence_length"]),
         "input_names": list(MODEL_INPUT_NAMES),
     }
+    if contract["schema_version"] == 2:
+        contract.update({
+            "crop_labels": list(statistics["crop_labels"]),
+            "leaf_validation": leaf_validation,
+            "decision_policy": decision_policy,
+        })
     validate_contract(contract)
     return contract
 
@@ -52,7 +63,7 @@ def validate_contract(contract: dict[str, Any]) -> None:
     missing = required - set(contract)
     if missing:
         raise ValueError(f"Preprocessing contract is missing fields: {sorted(missing)}")
-    if contract["schema_version"] != CONTRACT_SCHEMA_VERSION:
+    if contract["schema_version"] not in SUPPORTED_SCHEMA_VERSIONS:
         raise ValueError(
             f"Unsupported preprocessing schema version: {contract['schema_version']}"
         )
@@ -66,6 +77,26 @@ def validate_contract(contract: dict[str, Any]) -> None:
         raise ValueError("Preprocessing contract has an invalid sequence length")
     if list(contract["input_names"]) != MODEL_INPUT_NAMES:
         raise ValueError("Preprocessing contract has invalid model input names")
+
+    if contract["schema_version"] == 2:
+        required_v2 = {"crop_labels", "leaf_validation", "decision_policy"}
+        missing_v2 = required_v2 - set(contract)
+        if missing_v2:
+            raise ValueError(f"Schema-v2 contract is missing fields: {sorted(missing_v2)}")
+        reference = contract["leaf_validation"]
+        if not isinstance(reference, dict):
+            raise ValueError("leaf_validation must be an object")
+        for key in ("centroids", "crop_labels", "accept_threshold", "retry_threshold", "quality"):
+            if key not in reference:
+                raise ValueError(f"leaf_validation is missing {key}")
+        accept = float(reference["accept_threshold"])
+        retry = float(reference["retry_threshold"])
+        if not (-1.0 <= retry < accept <= 1.0):
+            raise ValueError("leaf_validation thresholds are invalid")
+        policy = contract["decision_policy"]
+        for key in ("min_confidence", "min_margin", "max_entropy"):
+            if key not in policy or not math.isfinite(float(policy[key])):
+                raise ValueError(f"decision_policy has invalid {key}")
 
     means = [float(value) for value in contract["sensor_mean"]]
     deviations = [float(value) for value in contract["sensor_std"]]

@@ -61,6 +61,16 @@ class ArtifactTests(unittest.TestCase):
             self.assertFalse(staged_model.exists())
             self.assertFalse(staged_contract.exists())
 
+    def test_schema_v2_requires_calibrated_policies(self) -> None:
+        contract = {
+            **self.valid_contract,
+            "schema_version": 2,
+            "crop_labels": ["Apple", "Tomato"],
+        }
+
+        with self.assertRaisesRegex(ValueError, "leaf_validation"):
+            validate_contract(contract)
+
 
 if __name__ == "__main__":
     unittest.main()
