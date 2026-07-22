@@ -39,15 +39,15 @@ export function ProbabilityBars({ probabilities = {} }) {
 }
 
 export function TrendLine({ values = [] }) {
-  const data = values.map((value, index) => ({ day: `D${index + 1}`, stress: value }));
+  const data = values.map((value, index) => ({ day: `D${index + 1}`, score: value }));
   return (
     <ResponsiveContainer width="100%" height={220}>
       <LineChart data={data}>
         <CartesianGrid stroke="rgba(255,255,255,.08)" />
         <XAxis dataKey="day" tick={{ fill: '#d8fbe7', fontSize: 12 }} />
-        <YAxis tick={{ fill: '#d8fbe7', fontSize: 12 }} />
-        <Tooltip contentStyle={tooltipStyle} />
-        <Line type="monotone" dataKey="stress" stroke="#F4B400" strokeWidth={3} dot={{ r: 4, fill: '#F4B400' }} isAnimationActive={false} />
+        <YAxis domain={[0, 100]} tick={{ fill: '#d8fbe7', fontSize: 12 }} />
+        <Tooltip contentStyle={tooltipStyle} formatter={(value) => [`${Number(value).toFixed(1)}/100`, 'Sensor stress']} />
+        <Line type="monotone" dataKey="score" name="Sensor stress" stroke="#F4B400" strokeWidth={3} dot={{ r: 4, fill: '#F4B400' }} isAnimationActive={false} />
       </LineChart>
     </ResponsiveContainer>
   );

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 import time
 from pathlib import Path
@@ -17,8 +18,9 @@ ML_DIR = PROJECT_ROOT / "ml"
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from inference import ModelSingleton, _prepare_images, _prepare_sensors, predict_stress  # noqa: E402
-from utils import CLASS_LABELS, DEFAULT_SEQUENCE_LENGTH, REPORTS_DIR, SENSOR_COLUMNS  # noqa: E402
+from artifacts import load_contract  # noqa: E402
+from inference import ModelSingleton, _prepare_image, predict_stress  # noqa: E402
+from utils import CLASS_LABELS, DEFAULT_SEQUENCE_LENGTH, SENSOR_COLUMNS  # noqa: E402
 
 
 class InferenceService:
@@ -29,11 +31,19 @@ class InferenceService:
 
     @staticmethod
     def _default_sensor_reading() -> dict[str, float]:
-        stats_path = REPORTS_DIR / "preprocessing_statistics.json"
-        normalization = json.loads(stats_path.read_text())["sensor_normalization"]
+        contract = load_contract()
         return {
-            column: float(normalization["mean"][index])
+            column: float(contract["sensor_mean"][index])
             for index, column in enumerate(SENSOR_COLUMNS)
+        }
+
+    @staticmethod
+    def _sensor_ranges() -> dict[str, tuple[float, float]]:
+        schema_path = PROJECT_ROOT / "dataset" / "schema.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        return {
+            column: tuple(float(value) for value in schema["columns"][column]["range"])
+            for column in SENSOR_COLUMNS
         }
 
     @staticmethod
@@ -44,18 +54,36 @@ class InferenceService:
         if not isinstance(readings, list):
             raise ValueError("recent_sensor_readings must be a list.")
 
+        ranges = InferenceService._sensor_ranges()
         for index, row in enumerate(readings):
             if isinstance(row, dict):
                 parsed_row = {}
                 for column in SENSOR_COLUMNS:
                     if column not in row:
                         raise ValueError(f"Reading {index + 1} is missing {column}.")
-                    parsed_row[column] = float(row[column])
+                    value = float(row[column])
+                    if not math.isfinite(value):
+                        raise ValueError(f"Reading {index + 1} {column} must be finite.")
+                    minimum, maximum = ranges[column]
+                    if not minimum <= value <= maximum:
+                        raise ValueError(
+                            f"Reading {index + 1} {column} must be between "
+                            f"{minimum:g} and {maximum:g}."
+                        )
+                    parsed_row[column] = value
             elif isinstance(row, (list, tuple)) and len(row) == len(SENSOR_COLUMNS):
-                parsed_row = {
-                    column: float(row[column_index])
-                    for column_index, column in enumerate(SENSOR_COLUMNS)
-                }
+                parsed_row = {}
+                for column_index, column in enumerate(SENSOR_COLUMNS):
+                    value = float(row[column_index])
+                    if not math.isfinite(value):
+                        raise ValueError(f"Reading {index + 1} {column} must be finite.")
+                    minimum, maximum = ranges[column]
+                    if not minimum <= value <= maximum:
+                        raise ValueError(
+                            f"Reading {index + 1} {column} must be between "
+                            f"{minimum:g} and {maximum:g}."
+                        )
+                    parsed_row[column] = value
             else:
                 raise ValueError(
                     "Each sensor reading must be an object with Soil_Moisture, "
@@ -105,8 +133,8 @@ class InferenceService:
                     tf = __import__("tensorflow")
                     model = ModelSingleton.get()
                     cls._activation_model = tf.keras.Model(
-                        inputs=model.inputs,
-                        outputs=model.get_layer("td_conv_128").output,
+                        inputs=model.get_layer("image").input,
+                        outputs=model.get_layer("image_encoder").output,
                         name="agrisense_activation_probe",
                     )
         return cls._activation_model
@@ -133,32 +161,25 @@ class InferenceService:
     @staticmethod
     def _downsample_heatmap(heatmap: np.ndarray, grid_size: int = 7) -> list[list[float]]:
         rows, columns = heatmap.shape
-        grid: list[list[float]] = []
-        for row in range(grid_size):
-            values: list[float] = []
-            for column in range(grid_size):
-                y0 = int(row * rows / grid_size)
-                y1 = int((row + 1) * rows / grid_size)
-                x0 = int(column * columns / grid_size)
-                x1 = int((column + 1) * columns / grid_size)
-                values.append(round(float(heatmap[y0:y1, x0:x1].mean()), 6))
-            grid.append(values)
-        return grid
+        row_indices = np.rint(np.linspace(0, rows - 1, grid_size)).astype(int)
+        column_indices = np.rint(np.linspace(0, columns - 1, grid_size)).astype(int)
+        resized = heatmap[np.ix_(row_indices, column_indices)]
+        return [
+            [round(float(value), 6) for value in row]
+            for row in resized
+        ]
 
     @classmethod
     def cnn_feature_summary(cls, image_path: str, sensor_matrix: np.ndarray) -> dict[str, Any]:
         """Compute a compact real activation summary from the last CNN block."""
-        images = _prepare_images([image_path] * DEFAULT_SEQUENCE_LENGTH)[None, ...]
-        sensors = _prepare_sensors(sensor_matrix)[None, ...]
-        activations = cls._get_activation_model().predict(
-            {"image_sequence": images, "sensor_sequence": sensors}, verbose=0
-        )
-        last_step = np.asarray(activations[0, -1], dtype="float32")
-        heatmap = last_step.mean(axis=-1)
+        image = _prepare_image(image_path)[None, ...]
+        activations = cls._get_activation_model().predict(image, verbose=0)
+        feature_map = np.asarray(activations[0], dtype="float32")
+        heatmap = feature_map.mean(axis=-1)
         maximum = float(heatmap.max())
         normalized = heatmap / maximum if maximum > 0 else heatmap
         return {
-            "source_layer": "td_conv_128",
+            "source_layer": "image_encoder",
             "activation_energy": round(float(normalized.mean()), 6),
             "peak_activation": round(float(normalized.max()), 6),
             "top_regions": cls._top_regions(normalized),
@@ -169,30 +190,39 @@ class InferenceService:
     @staticmethod
     def lstm_trend(readings: list[dict[str, float]]) -> dict[str, Any]:
         matrix = InferenceService._sensor_matrix(readings)
-        soil = matrix[:, 0]
-        temperature = matrix[:, 1]
-        humidity = matrix[:, 2]
-        # A simple stress proxy: higher when soil/humidity fall and temperature rises.
-        proxy = (-soil / 100.0) + (temperature / 45.0) + (-humidity / 100.0)
-        x_axis = np.arange(len(proxy), dtype="float32")
-        slope = float(np.polyfit(x_axis, proxy, deg=1)[0]) if len(proxy) > 1 else 0.0
-        if slope > 0.01:
+        soil_risk = 100.0 - matrix[:, 0]
+        temperature_risk = np.clip((matrix[:, 1] - 8.0) / (45.0 - 8.0) * 100.0, 0.0, 100.0)
+        humidity_risk = 100.0 - matrix[:, 2]
+        light_risk = np.clip(
+            (matrix[:, 3] - 1000.0) / (30000.0 - 1000.0) * 100.0, 0.0, 100.0
+        )
+        scores = np.clip(
+            0.35 * soil_risk
+            + 0.25 * temperature_risk
+            + 0.25 * humidity_risk
+            + 0.15 * light_risk,
+            0.0,
+            100.0,
+        )
+        x_axis = np.arange(len(scores), dtype="float32")
+        slope = float(np.polyfit(x_axis, scores, deg=1)[0]) if len(scores) > 1 else 0.0
+        if slope > 0.5:
             direction = "declining"
-        elif slope < -0.01:
+        elif slope < -0.5:
             direction = "improving"
         else:
             direction = "stable"
         return {
             "direction": direction,
             "slope": round(slope, 6),
-            "stress_proxy": [round(float(value), 6) for value in proxy],
+            "stress_score": [round(float(value), 4) for value in scores],
         }
 
     @classmethod
     def predict(cls, image_path: str, sensor_readings: list[dict[str, float]]) -> dict[str, Any]:
         started = time.perf_counter()
         sensor_matrix = cls._sensor_matrix(sensor_readings)
-        result = predict_stress([image_path] * DEFAULT_SEQUENCE_LENGTH, sensor_matrix)
+        result = predict_stress(image_path, sensor_matrix)
         feature_summary = cls.cnn_feature_summary(image_path, sensor_matrix)
         trend = cls.lstm_trend(sensor_readings)
         total_ms = round((time.perf_counter() - started) * 1000, 2)

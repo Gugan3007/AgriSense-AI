@@ -105,7 +105,7 @@ export default function Prediction() {
             <GlassCard className="p-5">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="section-title">CNN activation heatmap</h2>
-                <StatusPill color="#2E86FF">td_conv_128</StatusPill>
+                <StatusPill color="#2E86FF">{data.cnn_feature_summary?.source_layer || 'image_encoder'}</StatusPill>
               </div>
               <div className="grid gap-5 md:grid-cols-[.8fr_1fr] md:items-center">
                 <HeatmapGrid regions={data.cnn_feature_summary?.top_regions} />
@@ -126,7 +126,8 @@ export default function Prediction() {
                 <h2 className="section-title">LSTM temporal trend</h2>
                 <StatusPill color="#F4B400">{data.lstm_trend?.direction}</StatusPill>
               </div>
-              <TrendLine values={data.lstm_trend?.stress_proxy || []} />
+              <p className="mb-3 text-xs text-emerald-50/50">Sensor stress score (0–100)</p>
+              <TrendLine values={data.lstm_trend?.stress_score || []} />
             </GlassCard>
           </div>
 

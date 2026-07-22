@@ -9,8 +9,8 @@ from threading import Lock
 import numpy as np
 from PIL import Image
 
-from model import macro_f1_metric
-from utils import CLASS_LABELS, DEFAULT_SEQUENCE_LENGTH, MODEL_PATH, REPORTS_DIR, SENSOR_COLUMNS, require_tensorflow, utc_now
+from artifacts import load_contract
+from utils import CLASS_LABELS, DEFAULT_SEQUENCE_LENGTH, MODEL_PATH, SENSOR_COLUMNS, require_tensorflow, utc_now
 
 
 class ModelSingleton:
@@ -24,54 +24,70 @@ class ModelSingleton:
                 if cls._model is None:
                     if not MODEL_PATH.is_file():
                         raise FileNotFoundError(f"Saved model not found: {MODEL_PATH}")
+                    contract = load_contract()
                     tf = require_tensorflow()
-                    cls._model = tf.keras.models.load_model(
-                        MODEL_PATH, custom_objects={"MacroF1": type(macro_f1_metric())}
-                    )
+                    cls._model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+                    input_names = [tensor.name.split(":", 1)[0] for tensor in cls._model.inputs]
+                    if input_names != contract["input_names"]:
+                        raise ValueError(
+                            f"Model inputs {input_names} do not match contract {contract['input_names']}"
+                        )
         return cls._model
 
 
-def _prepare_images(image_sequence) -> np.ndarray:
-    if len(image_sequence) != DEFAULT_SEQUENCE_LENGTH:
-        raise ValueError(f"Expected {DEFAULT_SEQUENCE_LENGTH} images, received {len(image_sequence)}")
-    images = []
-    for item in image_sequence:
-        if isinstance(item, (str, Path)):
-            with Image.open(item) as image:
-                array = np.asarray(image.convert("RGB").resize((128, 128)), dtype="float32")
+def _prepare_image(item) -> np.ndarray:
+    contract = load_contract()
+    height, width, channels = contract["image_size"]
+    if channels != 3:
+        raise ValueError(f"Unsupported image channel count in contract: {channels}")
+    if isinstance(item, (str, Path)):
+        with Image.open(item) as image:
+            array = np.asarray(image.convert("RGB").resize((width, height)), dtype="float32")
+    else:
+        array = np.asarray(item)
+        if array.shape != (height, width, channels):
+            pil_values = array
+            if np.issubdtype(pil_values.dtype, np.floating) and pil_values.size:
+                if np.nanmax(pil_values) <= 1.0:
+                    pil_values = pil_values * 255.0
+            with Image.fromarray(np.asarray(pil_values, dtype="uint8")) as image:
+                array = np.asarray(
+                    image.convert("RGB").resize((width, height)), dtype="float32"
+                )
         else:
-            array = np.asarray(item, dtype="float32")
-            if array.shape != (128, 128, 3):
-                with Image.fromarray(array.astype("uint8")) as image:
-                    array = np.asarray(image.convert("RGB").resize((128, 128)), dtype="float32")
-        if array.max() > 1.0:
-            array /= 255.0
-        images.append(array)
-    return np.asarray(images, dtype="float32")
+            array = array.astype("float32")
+    if not np.isfinite(array).all():
+        raise ValueError("Image contains non-finite values")
+    if array.max() > 1.0:
+        array /= 255.0
+    return array.astype("float32")
 
 
 def _prepare_sensors(sensor_sequence) -> np.ndarray:
     values = np.asarray(sensor_sequence, dtype="float32")
-    if values.shape != (DEFAULT_SEQUENCE_LENGTH, len(SENSOR_COLUMNS)):
-        raise ValueError(f"Expected sensor shape ({DEFAULT_SEQUENCE_LENGTH}, 4), received {values.shape}")
-    import json
-    stats_path = REPORTS_DIR / "preprocessing_statistics.json"
-    if not stats_path.is_file():
-        raise FileNotFoundError(f"Missing preprocessing statistics: {stats_path}")
-    normalization = json.loads(stats_path.read_text())["sensor_normalization"]
-    mean = np.asarray(normalization["mean"], dtype="float32")
-    std = np.asarray(normalization["std"], dtype="float32")
+    contract = load_contract()
+    expected_shape = (contract["sequence_length"], len(contract["sensor_columns"]))
+    if values.shape != expected_shape:
+        raise ValueError(f"Expected sensor shape {expected_shape}, received {values.shape}")
+    if not np.isfinite(values).all():
+        raise ValueError("Sensor sequence contains non-finite values")
+    mean = np.asarray(contract["sensor_mean"], dtype="float32")
+    std = np.asarray(contract["sensor_std"], dtype="float32")
     return (values - mean) / std
 
 
-def predict_stress(image_sequence, sensor_sequence) -> dict:
-    """Predict stress from seven images/readings and return JSON-compatible values."""
+def predict_stress(image, sensor_sequence) -> dict:
+    """Predict stress from one current image and seven sensor readings."""
     started = time.perf_counter()
-    images = _prepare_images(image_sequence)[None, ...]
+    images = _prepare_image(image)[None, ...]
     sensors = _prepare_sensors(sensor_sequence)[None, ...]
     probabilities = ModelSingleton.get().predict(
-        {"image_sequence": images, "sensor_sequence": sensors}, verbose=0
+        {"image": images, "sensor_sequence": sensors}, verbose=0
     )[0]
+    if not np.isfinite(probabilities).all() or np.any(probabilities < 0) or np.any(probabilities > 1):
+        raise ValueError("Model returned invalid class probabilities")
+    if not np.isclose(float(probabilities.sum()), 1.0, atol=1e-5):
+        raise ValueError("Model class probabilities do not sum to one")
     index = int(np.argmax(probabilities))
     predicted_class = CLASS_LABELS[index]
     latency_ms = round((time.perf_counter() - started) * 1000, 2)
