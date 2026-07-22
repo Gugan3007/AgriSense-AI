@@ -68,10 +68,46 @@ def split_plant_ids(frame: pd.DataFrame, seed: int = SEED) -> dict[str, list[str
         "validation": sorted(validation_ids.tolist()),
         "test": sorted(test_ids.tolist()),
     }
-    sets = [set(result[name]) for name in result]
-    if any(sets[i] & sets[j] for i in range(3) for j in range(i + 1, 3)):
-        raise AssertionError("Plant leakage detected across splits")
+    validate_split_integrity(frame, result)
     return result
+
+
+def validate_split_integrity(
+    frame: pd.DataFrame,
+    splits: dict[str, list[str]],
+    require_all_classes: bool = True,
+) -> None:
+    """Reject plant or source-image leakage and incomplete class partitions."""
+    names = ("train", "validation", "test")
+    plant_sets = {name: set(splits[name]) for name in names}
+    for left_index, left in enumerate(names):
+        for right in names[left_index + 1:]:
+            overlap = plant_sets[left] & plant_sets[right]
+            if overlap:
+                raise ValueError(f"Plant leakage between {left} and {right}: {sorted(overlap)}")
+
+    image_sets = {
+        name: set(frame.loc[frame["Plant_ID"].isin(splits[name]), "Resolved_Image_Path"])
+        for name in names
+    }
+    for left_index, left in enumerate(names):
+        for right in names[left_index + 1:]:
+            overlap = image_sets[left] & image_sets[right]
+            if overlap:
+                sample = sorted(overlap)[:3]
+                raise ValueError(
+                    f"Source image leakage between {left} and {right}: {sample}"
+                )
+
+    if require_all_classes:
+        required = set(CLASS_LABELS)
+        for name in names:
+            present = set(
+                frame.loc[frame["Plant_ID"].isin(splits[name]), "Stress_Level"].astype(str)
+            )
+            missing = required - present
+            if missing:
+                raise ValueError(f"{name} split is missing stress classes: {sorted(missing)}")
 
 
 def fit_sensor_normalization(frame: pd.DataFrame, train_ids: list[str]) -> dict[str, list[float]]:
@@ -96,7 +132,7 @@ def make_windows(
         group = group.sort_values("Timestamp")
         for start in range(len(group) - sequence_length + 1):
             window = group.iloc[start : start + sequence_length]
-            paths.append(window["Resolved_Image_Path"].tolist())
+            paths.append(str(window.iloc[-1]["Resolved_Image_Path"]))
             raw_sensors = window[SENSOR_COLUMNS].to_numpy(dtype="float32")
             sensors.append((raw_sensors - mean) / std)
             labels.append(label_to_index[str(window.iloc[-1]["Stress_Level"])])
@@ -109,7 +145,7 @@ def make_windows(
     )
 
 
-def _decode_sequence(paths, sensor_sequence, label, augmenter=None):
+def _decode_sample(path, sensor_sequence, label, augmenter=None):
     tf = require_tensorflow()
 
     def decode(path):
@@ -119,13 +155,13 @@ def _decode_sequence(paths, sensor_sequence, label, augmenter=None):
         image.set_shape((*IMAGE_SIZE, 3))
         return image
 
-    images = tf.map_fn(decode, paths, fn_output_signature=tf.float32)
+    image = decode(path)
     if augmenter is not None:
         # All randomness is confined to the training pipeline.
-        images = augmenter(images, training=True)
-        images = tf.clip_by_value(images, 0.0, 1.0)
+        image = augmenter(image, training=True)
+        image = tf.clip_by_value(image, 0.0, 1.0)
     target = tf.one_hot(label, depth=len(CLASS_LABELS))
-    return {"image_sequence": images, "sensor_sequence": sensor_sequence}, target
+    return {"image": image, "sensor_sequence": sensor_sequence}, target
 
 
 def build_tf_dataset(paths, sensors, labels, batch_size: int, training: bool):
@@ -145,7 +181,7 @@ def build_tf_dataset(paths, sensors, labels, batch_size: int, training: bool):
     if training:
         dataset = dataset.shuffle(len(labels), seed=SEED, reshuffle_each_iteration=True)
     dataset = dataset.map(
-        lambda p, s, y: _decode_sequence(p, s, y, augmenter),
+        lambda p, s, y: _decode_sample(p, s, y, augmenter),
         num_parallel_calls=tf.data.AUTOTUNE,
         deterministic=not training,
     )

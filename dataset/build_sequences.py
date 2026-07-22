@@ -71,11 +71,13 @@ HEALTH_STATUS = {
 }
 
 SENSOR_PROFILES = {
+    # Deliberately overlapping distributions keep synthetic telemetry from
+    # becoming a deterministic encoding of the target class.
     # mean soil %, temperature C, humidity %, light lux; standard deviations
-    "Healthy": ((63.0, 24.0, 67.0, 14500.0), (4.0, 1.5, 4.0, 1400.0)),
-    "Low": ((54.0, 26.0, 61.0, 15500.0), (4.5, 1.7, 4.5, 1600.0)),
-    "Medium": ((42.0, 29.0, 53.0, 17000.0), (5.0, 2.0, 5.0, 1800.0)),
-    "High": ((29.0, 32.0, 44.0, 18500.0), (5.5, 2.3, 5.5, 2100.0)),
+    "Healthy": ((58.0, 25.0, 62.0, 15000.0), (10.0, 3.0, 10.0, 3500.0)),
+    "Low": ((53.0, 26.0, 59.0, 15500.0), (10.0, 3.0, 10.0, 3500.0)),
+    "Medium": ((48.0, 28.0, 55.0, 16250.0), (10.0, 3.0, 10.0, 3500.0)),
+    "High": ((43.0, 29.0, 51.0, 17000.0), (10.0, 3.0, 10.0, 3500.0)),
 }
 
 
@@ -133,9 +135,17 @@ def progression(day_index: int, days: int, available: list[str], rng: random.Ran
     return STRESS_LEVELS[chosen]
 
 
-def sensor_reading(level: str, rng: random.Random) -> tuple[float, float, float, float]:
+def sensor_reading(
+    level: str,
+    rng: random.Random,
+    previous: tuple[float, float, float, float] | None = None,
+) -> tuple[float, float, float, float]:
     means, deviations = SENSOR_PROFILES[level]
     values = [rng.gauss(mean, sd) for mean, sd in zip(means, deviations)]
+    if previous is not None:
+        # Environmental telemetry changes gradually. Smoothing also prevents
+        # every row from acting like an independent class-labelled lookup.
+        values = [0.65 * old + 0.35 * new for old, new in zip(previous, values)]
     soil = min(100.0, max(5.0, values[0]))
     temp = min(45.0, max(8.0, values[1]))
     humidity = min(100.0, max(10.0, values[2]))
@@ -202,6 +212,7 @@ stress (not pure noise), with seeded Gaussian variation and safe physical bounds
 - Crops used: {', '.join(stats['crops'])}
 - Stress distribution: {json.dumps(stats['stress_distribution'], sort_keys=True)}
 - Source images available: {stats['source_image_count']}
+- Reused source images: {stats['reused_source_images']} (must remain zero)
 
 `Image_Path` references the original files beneath `dataset/plantvillage_raw/`;
 images are not duplicated. Paths are relative to the project root for portability.
@@ -240,6 +251,10 @@ def build(args: argparse.Namespace) -> dict[str, object]:
         raise ValueError("No crop has both healthy and stressed images")
 
     rng = random.Random(args.seed)
+    image_rng = random.Random(args.seed + 1)
+    image_pools = {class_name: list(images) for class_name, images in classes.items()}
+    for images in image_pools.values():
+        image_rng.shuffle(images)
     fieldnames = [
         "Plant_ID", "Image_Path", "Timestamp", "Plant_Type", "Soil_Moisture",
         "Temperature", "Humidity", "Light_Intensity", "Health_Status",
@@ -255,6 +270,7 @@ def build(args: argparse.Namespace) -> dict[str, object]:
         days = rng.randint(args.min_days, args.max_days)
         lengths.append(days)
         last_rank = 0
+        previous_sensor_reading = None
         for day_index in range(days):
             proposed = progression(day_index, days, list(levels), rng)
             rank = max(last_rank, SEVERITY_RANK[proposed])
@@ -263,8 +279,15 @@ def build(args: argparse.Namespace) -> dict[str, object]:
             last_rank = rank
             level = STRESS_LEVELS[rank]
             disease_class = rng.choice(levels[level])
-            image_path = rng.choice(classes[disease_class])
-            soil, temp, humidity, light = sensor_reading(level, rng)
+            if not image_pools[disease_class]:
+                raise ValueError(
+                    f"Not enough unique images in {disease_class} for {args.plants} plants. "
+                    "Reduce --plants or provide more source images."
+                )
+            image_path = image_pools[disease_class].pop()
+            current_reading = sensor_reading(level, rng, previous_sensor_reading)
+            previous_sensor_reading = current_reading
+            soil, temp, humidity, light = current_reading
             rows.append({
                 "Plant_ID": f"PLANT_{index + 1:03d}",
                 "Image_Path": relative_path(image_path, project_root),
@@ -281,11 +304,12 @@ def build(args: argparse.Namespace) -> dict[str, object]:
 
     output = script_dir / "sequential_data.csv"
     with output.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
     stress_counts = Counter(str(row["Stress_Level"]) for row in rows)
+    reused_source_images = len(rows) - len({str(row["Image_Path"]) for row in rows})
     stats = {
         "class_root": str(class_root),
         "class_count": len(classes),
@@ -296,6 +320,7 @@ def build(args: argparse.Namespace) -> dict[str, object]:
         "max_days": max(lengths),
         "crops": eligible_crops,
         "stress_distribution": dict(sorted(stress_counts.items())),
+        "reused_source_images": reused_source_images,
         "output": str(output),
     }
     write_schema(script_dir / "schema.json")

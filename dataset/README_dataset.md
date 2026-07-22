@@ -21,11 +21,12 @@ stress (not pure noise), with seeded Gaussian variation and safe physical bounds
 ## Generated snapshot
 
 - Virtual plants: 64
-- Plant-day rows: 1583
+- Plant-day rows: 1593
 - Sequence length: 20–30 days
 - Crops used: Apple, Cherry_(including_sour), Corn_(maize), Grape, Peach, Pepper,_bell, Potato, Strawberry, Tomato
-- Stress distribution: {"Healthy": 619, "High": 234, "Low": 220, "Medium": 510}
+- Stress distribution: {"Healthy": 623, "High": 232, "Low": 215, "Medium": 523}
 - Source images available: 54305
+- Reused source images: 0 (must remain zero)
 
 `Image_Path` references the original files beneath `dataset/plantvillage_raw/`;
 images are not duplicated. Paths are relative to the project root for portability.
