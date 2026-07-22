@@ -5,6 +5,7 @@ from __future__ import annotations
 from flask import Blueprint, jsonify, request
 
 from services.storage_service import save_upload
+from services.image_validation_service import ImageValidationError
 
 upload_bp = Blueprint("upload", __name__)
 
@@ -14,11 +15,14 @@ def upload_image():
     try:
         image = request.files.get("image") or request.files.get("file")
         sensor_csv = request.files.get("sensor_csv")
-        record = save_upload(image, sensor_csv=sensor_csv)
+        record, validation = save_upload(image, sensor_csv=sensor_csv)
         return jsonify({
             "upload_id": record.id,
             "image_url": record.image_url,
             "received_at": record.received_at.isoformat(),
+            "image_validation": validation,
         }), 201
+    except ImageValidationError as exc:
+        return jsonify({"error": exc.result["message"], **exc.result}), 422
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
