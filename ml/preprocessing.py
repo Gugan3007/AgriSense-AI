@@ -19,6 +19,11 @@ from utils import (
 )
 
 LOGGER = logging.getLogger(__name__)
+TRAINING_OUTPUT_NAMES = (
+    "stress_probabilities",
+    "image_probabilities",
+    "sensor_probabilities",
+)
 
 
 @dataclass
@@ -186,6 +191,22 @@ def build_tf_dataset(paths, sensors, labels, batch_size: int, training: bool):
         deterministic=not training,
     )
     return dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+
+
+def add_auxiliary_targets(dataset, class_weights: list[float] | None = None):
+    """Repeat each target for the fused and auxiliary training heads."""
+    tf = require_tensorflow()
+    weights = tf.constant(class_weights, dtype=tf.float32) if class_weights is not None else None
+
+    def map_targets(inputs, target):
+        targets = {name: target for name in TRAINING_OUTPUT_NAMES}
+        if weights is None:
+            return inputs, targets
+        label = tf.argmax(target, axis=-1, output_type=tf.int32)
+        sample_weight = tf.gather(weights, label)
+        return inputs, targets, {name: sample_weight for name in TRAINING_OUTPUT_NAMES}
+
+    return dataset.map(map_targets, num_parallel_calls=tf.data.AUTOTUNE)
 
 
 def prepare_datasets(

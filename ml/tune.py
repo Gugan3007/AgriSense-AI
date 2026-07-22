@@ -10,8 +10,8 @@ import time
 
 import pandas as pd
 
-from model import build_model, compile_model
-from preprocessing import prepare_datasets
+from model import build_models, compile_model
+from preprocessing import add_auxiliary_targets, prepare_datasets
 from utils import REPORTS_DIR, SEED, ensure_directories, require_tensorflow, set_reproducible_seed
 
 SEARCH_SPACE = {
@@ -38,19 +38,32 @@ def tune(trials: int = 6, epochs: int = 3, batch_size: int = 16) -> pd.DataFrame
         data = prepare_datasets(
             sequence_length=config["sequence_length"], batch_size=batch_size, save_statistics=False
         )
-        model = compile_model(
-            build_model(config["sequence_length"], config["lstm_units"], config["dropout"]),
-            config["learning_rate"],
+        training_model, _ = build_models(
+            config["sequence_length"], config["lstm_units"], config["dropout"]
         )
+        model = compile_model(training_model, config["learning_rate"])
         started = time.perf_counter()
-        history = model.fit(data.train, validation_data=data.validation, epochs=epochs, verbose=1)
-        best_epoch = int(pd.Series(history.history["val_macro_f1"]).idxmax())
+        history = model.fit(
+            add_auxiliary_targets(data.train),
+            validation_data=add_auxiliary_targets(data.validation),
+            epochs=epochs,
+            verbose=1,
+        )
+        best_epoch = int(
+            pd.Series(history.history["val_stress_probabilities_macro_f1"]).idxmax()
+        )
         results.append({
             **config,
             "best_epoch": best_epoch + 1,
-            "validation_accuracy": float(history.history["val_accuracy"][best_epoch]),
-            "validation_macro_f1": float(history.history["val_macro_f1"][best_epoch]),
-            "validation_loss": float(history.history["val_loss"][best_epoch]),
+            "validation_accuracy": float(
+                history.history["val_stress_probabilities_accuracy"][best_epoch]
+            ),
+            "validation_macro_f1": float(
+                history.history["val_stress_probabilities_macro_f1"][best_epoch]
+            ),
+            "validation_loss": float(
+                history.history["val_stress_probabilities_loss"][best_epoch]
+            ),
             "training_seconds": round(time.perf_counter() - started, 2),
         })
     frame = pd.DataFrame(results).sort_values(

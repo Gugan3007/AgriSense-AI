@@ -45,54 +45,113 @@ def macro_f1_metric():
 
 
 def compile_model(model, learning_rate: float = 1e-3):
+    """Compile the three-output training model with image-first supervision."""
     tf = require_tensorflow()
+    losses = {
+        name: tf.keras.losses.CategoricalCrossentropy()
+        for name in ("stress_probabilities", "image_probabilities", "sensor_probabilities")
+    }
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
-        loss=tf.keras.losses.CategoricalCrossentropy(),
-        metrics=[
-            tf.keras.metrics.CategoricalAccuracy(name="accuracy"),
-            tf.keras.metrics.Precision(name="precision"),
-            tf.keras.metrics.Recall(name="recall"),
-            macro_f1_metric(),
-        ],
+        loss=losses,
+        loss_weights={
+            "stress_probabilities": 1.0,
+            "image_probabilities": 0.5,
+            "sensor_probabilities": 0.1,
+        },
+        metrics={
+            "stress_probabilities": [
+                tf.keras.metrics.CategoricalAccuracy(name="accuracy"),
+                macro_f1_metric(),
+            ],
+            "image_probabilities": [
+                tf.keras.metrics.CategoricalAccuracy(name="accuracy"),
+            ],
+            "sensor_probabilities": [
+                tf.keras.metrics.CategoricalAccuracy(name="accuracy"),
+            ],
+        },
     )
     return model
+
+
+def build_models(
+    sequence_length: int = DEFAULT_SEQUENCE_LENGTH,
+    lstm_units: int = 128,
+    dropout: float = 0.3,
+    image_weights: str | None = "imagenet",
+):
+    """Return shared-weight training and production inference models."""
+    tf = require_tensorflow()
+    layers = tf.keras.layers
+
+    image_input = layers.Input(
+        shape=(*IMAGE_SIZE, 3), name="image"
+    )
+    sensor_input = layers.Input(shape=(sequence_length, 4), name="sensor_sequence")
+
+    # MobileNetV2 expects pixels in [-1, 1]. The base stays frozen so the
+    # limited project dataset trains a compact, stable visual classification head.
+    image_scaled = layers.Rescaling(2.0, offset=-1.0, name="imagenet_rescaling")(image_input)
+    image_encoder = tf.keras.applications.MobileNetV2(
+        include_top=False,
+        weights=image_weights,
+        input_shape=(*IMAGE_SIZE, 3),
+        name="image_encoder",
+    )
+    image_encoder.trainable = False
+    image_map = image_encoder(image_scaled, training=False)
+    image_features = layers.GlobalAveragePooling2D(name="cnn_global_pool")(image_map)
+    image_features = layers.Dense(128, activation="relu", name="image_features")(image_features)
+    image_features = layers.Dropout(0.2, name="image_dropout")(image_features)
+    image_probabilities = layers.Dense(
+        len(CLASS_LABELS), activation="softmax", name="image_probabilities"
+    )(image_features)
+
+    noisy_sensors = layers.GaussianNoise(0.15, name="sensor_noise")(sensor_input)
+    sensor_features = layers.LSTM(
+        min(lstm_units, 64), name="sensor_lstm"
+    )(noisy_sensors)
+    sensor_features = layers.Dense(32, activation="relu", name="sensor_features")(sensor_features)
+    # A single dropout mask per sample removes the whole sensor representation
+    # during training often enough to prevent sensor-only shortcut learning.
+    sensor_features = layers.Dropout(
+        dropout, noise_shape=(None, 1), name="sensor_modality_dropout"
+    )(sensor_features)
+    sensor_probabilities = layers.Dense(
+        len(CLASS_LABELS), activation="softmax", name="sensor_probabilities"
+    )(sensor_features)
+
+    weighted_image = layers.Rescaling(0.8, name="image_probability_weight")(image_probabilities)
+    weighted_sensor = layers.Rescaling(0.2, name="sensor_probability_weight")(sensor_probabilities)
+    stress_probabilities = layers.Add(name="stress_probabilities")(
+        [weighted_image, weighted_sensor]
+    )
+
+    inputs = {"image": image_input, "sensor_sequence": sensor_input}
+    training_model = tf.keras.Model(
+        inputs,
+        {
+            "stress_probabilities": stress_probabilities,
+            "image_probabilities": image_probabilities,
+            "sensor_probabilities": sensor_probabilities,
+        },
+        name="agrisense_training_model",
+    )
+    inference_model = tf.keras.Model(
+        inputs, stress_probabilities, name="agrisense_image_first_cnn_lstm"
+    )
+    return training_model, inference_model
 
 
 def build_model(
     sequence_length: int = DEFAULT_SEQUENCE_LENGTH,
     lstm_units: int = 128,
     dropout: float = 0.3,
+    image_weights: str | None = "imagenet",
 ):
-    tf = require_tensorflow()
-    layers = tf.keras.layers
-
-    image_input = layers.Input(
-        shape=(sequence_length, *IMAGE_SIZE, 3), name="image_sequence"
-    )
-    sensor_input = layers.Input(shape=(sequence_length, 4), name="sensor_sequence")
-
-    # TimeDistributed applies the same CNN to each day, yielding one feature vector per timestep.
-    x = layers.TimeDistributed(layers.Conv2D(32, 3, activation="relu"), name="td_conv_32")(image_input)
-    x = layers.TimeDistributed(layers.MaxPooling2D(2), name="td_pool_1")(x)
-    x = layers.TimeDistributed(layers.Conv2D(64, 3, activation="relu"), name="td_conv_64")(x)
-    x = layers.TimeDistributed(layers.MaxPooling2D(2), name="td_pool_2")(x)
-    x = layers.TimeDistributed(layers.Conv2D(128, 3, activation="relu"), name="td_conv_128")(x)
-    x = layers.TimeDistributed(layers.MaxPooling2D(2), name="td_pool_3")(x)
-    cnn_features = layers.TimeDistributed(layers.Flatten(), name="cnn_feature_vector")(x)
-
-    # Sensors are aligned day-by-day with the corresponding visual feature vectors.
-    fused = layers.Concatenate(axis=-1, name="image_sensor_fusion")([cnn_features, sensor_input])
-    # The first LSTM preserves the temporal sequence; the second compresses the trend.
-    temporal = layers.LSTM(lstm_units, return_sequences=True, name="lstm_sequence")(fused)
-    temporal = layers.Dropout(dropout, name="lstm_sequence_dropout")(temporal)
-    temporal = layers.LSTM(64, name="lstm_summary")(temporal)
-    temporal = layers.Dropout(dropout, name="lstm_summary_dropout")(temporal)
-    # Dense layers translate the learned temporal representation into four stress probabilities.
-    head = layers.Dense(64, activation="relu", name="dense_64")(temporal)
-    head = layers.Dropout(0.2, name="dense_dropout")(head)
-    output = layers.Dense(len(CLASS_LABELS), activation="softmax", name="stress_probabilities")(head)
-    return tf.keras.Model([image_input, sensor_input], output, name="agrisense_cnn_lstm")
+    """Compatibility wrapper returning the production inference model."""
+    return build_models(sequence_length, lstm_units, dropout, image_weights)[1]
 
 
 def save_model_summary(model, path: Path = REPORTS_DIR / "model_summary.txt") -> None:
